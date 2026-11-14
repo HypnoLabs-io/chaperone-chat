@@ -1,14 +1,16 @@
 /**
  * The conversation engine: open a conversation, load a participant's view of it, send a message through the screen.
- * Every message is checked before it is stored or shown: the rules, then the split-message pass over the sender's
- * recent messages. A refused message is never stored (an event records the kind and what decided, never the text).
+ * Every message is checked before it is stored or shown: the rules, the split-message pass over the sender's recent
+ * messages, then Jev (`../guard/check.ts`). A refused message is never stored; a held one is stored and only its sender
+ * sees it until it is checked again or a moderator decides. Every outcome records an event with ids and numbers,
+ * never the text.
  */
 import { ChaperoneError } from "../errors";
-import type { ContactKind } from "../guard/types";
+import { check, type Judge, type Verdict } from "../guard/check";
 import type { Json, ParticipantRow } from "../store/types";
 import type { Resolved } from "./config";
 import { EVENT } from "./event-types";
-import { cleanText, newId } from "./util";
+import { cleanText, newId, round3 } from "./util";
 import {
   byPosition,
   conversationView,
@@ -65,6 +67,21 @@ function text(value: unknown, max: number, name: string, optional = false): stri
   return value.trim();
 }
 
+/** What a send's event records: what decided and how, never the text. */
+function verdictMeta(verdict: Verdict, appeal: boolean): { [key: string]: Json } {
+  return {
+    action: verdict.observed?.action ?? verdict.action,
+    decidedBy: verdict.observed?.decidedBy ?? verdict.decidedBy,
+    kind: verdict.observed?.kind ?? verdict.kind ?? null,
+    policy: verdict.observed?.policy ?? verdict.policy ?? null,
+    p: round3(verdict.observed?.p ?? verdict.p),
+    checkedBy: verdict.checkedBy,
+    appeal,
+    judgeFailure: verdict.observed?.judgeFailure ?? verdict.judgeFailure ?? null,
+    ...(verdict.observed ? { observed: true } : {}),
+  };
+}
+
 export function createEngine(r: Resolved) {
   const { store, guard, links } = r;
 
@@ -80,6 +97,76 @@ export function createEngine(r: Resolved) {
 
   async function event(type: string, conversationId: string | null, participantId: string | null, meta: Json = {}) {
     await store.appendEvent({ id: newId("e"), type, conversationId, participantId, meta });
+  }
+
+  /** Jev, claiming one call under the daily cap before each request and recording its score (never the text). */
+  function cappedJudge(conversationId: string, participantId: string): Judge | null {
+    const base = r.judge;
+    if (!base) return null;
+    return {
+      model: base.model,
+      async judge(policy, turns) {
+        const call = { id: newId("e"), type: EVENT.jevCall, conversationId, participantId, meta: { policy: policy.id } };
+        let claimed = false;
+        try {
+          claimed =
+            r.dailyCap === null
+              ? await store.appendEvent(call)
+              : await store.claimEventUnderCap(call, { type: EVENT.jevCall, max: r.dailyCap, windowMs: DAY });
+        } catch {
+          claimed = false;
+        }
+        // A spent or unreadable cap: no call, and the fallback decides.
+        if (!claimed) return { ok: false, failure: "unavailable" };
+        const result = await base.judge(policy, turns);
+        const recorded: { [key: string]: Json } = result.ok
+          ? { p: round3(result.p), model: base.model, ...(result.usage ? { usage: { ...result.usage } } : {}) }
+          : { failure: result.failure };
+        await store.setEventMeta(call.id, recorded).catch(() => undefined);
+        return result;
+      },
+    };
+  }
+
+  /** The check on one message: the rules, the split-message pass over the sender's recent messages, then Jev. */
+  async function screen(conversationId: string, participantId: string, text: string, appeal: boolean): Promise<Verdict> {
+    const contextTurns = r.judge ? r.contextTurns : 0;
+    let earlier: string[] = [];
+    let context: { sender: boolean; text: string }[] = [];
+    if (r.window || contextTurns > 0) {
+      const recent = await store.recentTurns({
+        conversationId,
+        senderId: participantId,
+        contextTurns,
+        windowMax: r.window?.maxEarlier ?? 0,
+        windowMs: r.window?.windowMs ?? 0,
+      });
+      if (r.window) {
+        const since = recent.now.getTime() - r.window.windowMs;
+        earlier = recent.turns
+          .filter((t) => t.participantId === participantId && t.sentAt.getTime() >= since)
+          .map((t) => t.body)
+          .slice(-r.window.maxEarlier);
+      }
+      if (contextTurns > 0) {
+        context = recent.turns.slice(-contextTurns).map((t) => ({ sender: t.participantId === participantId, text: t.body }));
+      }
+    }
+    return check(
+      { text, earlier, context, appeal },
+      {
+        guard,
+        judge: cappedJudge(conversationId, participantId),
+        policies: r.policies,
+        window: r.window ? { maxEarlier: r.window.maxEarlier } : false,
+        contextTurns,
+        bands: r.bands,
+        appeals: r.appeals,
+        fallback: r.fallback,
+        mode: r.mode,
+        reasons: { window: r.windowReasons, hold: r.notes.held },
+      },
+    );
   }
 
   return {
@@ -205,50 +292,37 @@ export function createEngine(r: Resolved) {
         }
       }
       const appeal = options.appeal === true;
-      const refuse = async (meta: { kind: ContactKind; decidedBy: string }, message: string): Promise<SendResult> => {
-        await event(EVENT.messageBlocked, conversationId, participantId, { ...meta, p: 1, checkedBy: "rules", appeal });
-        return { ok: false, reason: "blocked", message, kind: meta.kind, appealable: false };
-      };
+      const verdict = await screen(conversationId, participantId, body, appeal);
+      const meta = verdictMeta(verdict, appeal);
 
-      // 1. The rules on the new text.
-      const scan = await guard.scan(body);
-      const kind = scan.kinds[0];
-      if (kind) return refuse({ kind, decidedBy: scan.scrubberId }, guard.reasons[kind]);
-
-      // 2. The split-message pass over the sender's own recent messages.
-      if (r.window) {
-        const recent = await store.recentTurns({
-          conversationId,
-          senderId: participantId,
-          contextTurns: 0,
-          windowMax: r.window.maxEarlier,
-          windowMs: r.window.windowMs,
-        });
-        const since = recent.now.getTime() - r.window.windowMs;
-        const earlier = recent.turns
-          .filter((t) => t.participantId === participantId && t.sentAt.getTime() >= since)
-          .map((t) => t.body)
-          .slice(-r.window.maxEarlier);
-        const windowKind = guard.windowKinds(earlier, body, r.window.maxEarlier)[0];
-        if (windowKind) return refuse({ kind: windowKind, decidedBy: "rules-window" }, r.windowReasons[windowKind]);
+      if (verdict.action === "refuse" || verdict.action === "appealable") {
+        await event(EVENT.messageBlocked, conversationId, participantId, meta);
+        return {
+          ok: false,
+          reason: "blocked",
+          message: verdict.reason ?? guard.reasons.ask,
+          ...(verdict.kind ? { kind: verdict.kind } : {}),
+          appealable: verdict.action === "appealable",
+        };
       }
 
-      // 3. Delivered: the rules alone, by intent (jev: false).
+      const held = verdict.action === "hold";
       const stored = await store.insertMessage({
         id: newId("m"),
         conversationId,
         participantId,
         body,
-        status: "sent",
-        holdReason: null,
-        policy: null,
-        score: null,
-        checkedBy: "rules",
+        status: held ? "held" : "sent",
+        holdReason: held ? (verdict.holdReason ?? "unchecked") : null,
+        policy: verdict.policy ?? null,
+        score: round3(verdict.p),
+        checkedBy: verdict.checkedBy,
       });
       if (!stored) return { ok: false, reason: "closed" };
-      await event(EVENT.messageSent, conversationId, participantId, { messageId: stored.id, checkedBy: "rules", appeal });
+      const type = held ? EVENT.messageHeld : verdict.observed ? EVENT.messageObserved : EVENT.messageSent;
+      await event(type, conversationId, participantId, { ...meta, messageId: stored.id });
       const people = new Map(ctx.participants.map((p) => [p.id, p]));
-      return { ok: true, message: messageView(stored, participantId, people, r.notes), held: false };
+      return { ok: true, message: messageView(stored, participantId, people, r.notes), held };
     },
   };
 }
