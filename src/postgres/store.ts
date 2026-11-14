@@ -138,7 +138,8 @@ export function postgresStore(query: Query, options: PostgresStoreOptions = {}):
             SELECT 1 FROM ${p}messages m
             WHERE m.conversation_id = pp.conversation_id AND m.participant_id <> pp.id AND m.status = 'sent'
               AND m.sent_at > coalesce(pp.read_at, '-infinity'::timestamptz)
-              AND m.sent_at > coalesce(pp.notified_at, '-infinity'::timestamptz)
+              -- The last notice covered what was old enough then: a message from the grace period before it counts.
+              AND m.sent_at > coalesce(pp.notified_at - make_interval(secs => $${base + 1}::float8), '-infinity'::timestamptz)
               AND m.sent_at <= ${T} - make_interval(secs => $${base + 1}::float8))`,
         params: (n) => [ms(n.everyMs), ms(n.graceMs)],
       };
@@ -528,7 +529,7 @@ export function postgresStore(query: Query, options: PostgresStoreOptions = {}):
         await rows(
           `SELECT pp.id, pp.conversation_id FROM ${p}participants pp JOIN ${p}conversations c ON c.id = pp.conversation_id
            WHERE ${rule.sql}
-           ORDER BY pp.created_at, pp.id
+           ORDER BY pp.created_at, pp.conversation_id, pp.position
            LIMIT $1::int`,
           [params.limit, ...rule.params(params)],
         )

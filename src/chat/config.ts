@@ -90,6 +90,57 @@ export interface Hooks {
   onEvent?(event: ChatEvent): void | Promise<void>;
 }
 
+/** What a participant's notice is about. */
+export interface ParticipantNotice {
+  kind: "message" | "reminder" | "closed";
+  conversationId: string;
+  /** Who to tell. `externalRef` is your id for them: how you reach them is yours. */
+  participant: { id: string; role: string; alias: string; externalRef: string | null };
+  /** The others in the conversation, by alias. */
+  others: { role: string; alias: string }[];
+  /** A fresh link for them: `${yourChatPage}#t=${link.token}`. */
+  link: { token: string; expiresAt: Date };
+  /** Milliseconds to the deadline; null with none. */
+  msLeft: number | null;
+  /** For `closed`: how it ended. */
+  outcome: string | null;
+}
+
+/** For the host: Jev's daily cap is spent, or its last few calls all failed. Sent at most once a day. */
+export interface TroubleNotice {
+  kind: "trouble";
+  why: "cap" | "failing";
+  /** Jev calls in the last 24 hours. */
+  calls: number;
+  cap: number | null;
+  /** How many of the last few calls failed. */
+  failedInARow: number;
+}
+
+export type Notice = ParticipantNotice | TroubleNotice;
+
+export interface NotifyOptions {
+  /** Delivers a notice: email, a text, a push, a webhook. Your choice; it may throw (the notice is then dropped). */
+  send(notice: Notice): void | Promise<void>;
+  /** At most one new-message notice per participant in this many minutes. Default 60. */
+  everyMinutes?: number;
+  /** A message this many minutes old is noticed; newer ones are left for a page that's open. Default 2. */
+  graceMinutes?: number;
+  /** Remind each participant once when the deadline is this close; null for no reminders. Default 48 hours. */
+  reminderBeforeMs?: number | null;
+  /** Notices across everyone in 24 hours; null for no limit. Default null. */
+  maxPerDay?: number | null;
+  /** Turn kinds off. All on by default. */
+  kinds?: Partial<Record<Notice["kind"], boolean>>;
+}
+
+export interface RetentionOptions {
+  /** Delete a conversation's messages this many days after it closes; null keeps them. Default 30. */
+  deleteMessagesAfterCloseDays?: number | null;
+  /** Delete events older than this many days; null keeps them. Default null. */
+  pruneEventsAfterDays?: number | null;
+}
+
 export interface ChatConfig {
   /** Signs the participants' links. At least 32 characters; a list rotates (the first signs, any verifies). */
   secret: string | readonly string[];
@@ -126,6 +177,11 @@ export interface ChatConfig {
   /** The outcome a conversation closes with when its deadline passes. Default "expired". */
   expiredOutcome?: string;
   hooks?: Hooks;
+  /** Notices to participants (and to you about Jev), sent by `sweep()`. */
+  notify?: NotifyOptions;
+  retention?: RetentionOptions;
+  /** How long a close may sit in `closing` (its hook failed) before the sweep asks the hook again. Default 5 minutes. */
+  staleClosingMs?: number;
 }
 
 export const DEFAULT_OUTCOMES: Readonly<Record<string, OutcomeRule>> = { end: { by: "*", requires: "any" } };
@@ -160,6 +216,17 @@ export interface Resolved {
   outcomes: Readonly<Record<string, Required<OutcomeRule>>>;
   expiredOutcome: string;
   hooks: Hooks;
+  notify: {
+    send: NotifyOptions["send"];
+    everyMs: number;
+    graceMs: number;
+    reminderBeforeMs: number | null;
+    maxPerDay: number | null;
+    kinds: Record<Notice["kind"], boolean>;
+  } | null;
+  deleteMessagesAfterMs: number | null;
+  pruneEventsAfterMs: number | null;
+  staleClosingMs: number;
 }
 
 const OUTCOME = /^[a-z][a-z0-9_-]{0,31}$/;
@@ -267,5 +334,27 @@ export function resolveConfig(config: ChatConfig): Resolved {
     outcomes,
     expiredOutcome,
     hooks: config.hooks ?? {},
+    notify: resolveNotify(config.notify),
+    deleteMessagesAfterMs: days(config.retention?.deleteMessagesAfterCloseDays, 30, "retention.deleteMessagesAfterCloseDays"),
+    pruneEventsAfterMs: days(config.retention?.pruneEventsAfterDays, null, "retention.pruneEventsAfterDays"),
+    staleClosingMs: nonNegative(config.staleClosingMs, 5 * 60_000, "staleClosingMs") as number,
+  };
+}
+
+function days(value: number | null | undefined, fallback: number | null, name: string): number | null {
+  const n = nonNegative(value, fallback, name);
+  return n === null ? null : n * DAY;
+}
+
+function resolveNotify(notify: NotifyOptions | undefined): Resolved["notify"] {
+  if (!notify) return null;
+  if (typeof notify.send !== "function") throw new ChaperoneError("invalid_option", "notify needs send(notice)");
+  return {
+    send: notify.send,
+    everyMs: (nonNegative(notify.everyMinutes, 60, "notify.everyMinutes") as number) * 60_000,
+    graceMs: (nonNegative(notify.graceMinutes, 2, "notify.graceMinutes") as number) * 60_000,
+    reminderBeforeMs: nonNegative(notify.reminderBeforeMs, 2 * DAY, "notify.reminderBeforeMs"),
+    maxPerDay: notify.maxPerDay === undefined || notify.maxPerDay === null ? null : positive(notify.maxPerDay, 1, "notify.maxPerDay"),
+    kinds: { message: true, reminder: true, closed: true, trouble: true, ...notify.kinds },
   };
 }

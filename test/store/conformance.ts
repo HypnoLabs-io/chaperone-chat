@@ -525,6 +525,18 @@ export function storeConformance(name: string, make: () => Promise<Harness>) {
         expect(await targets("message")).toEqual([c.b.id]);
       });
 
+      it("still counts a message from the grace period before the last notice", async () => {
+        const c = await conversation();
+        await message(c, c.a, "first");
+        await h.advance(2 * MIN);
+        // Lands as the notice is claimed: too new for it, so the next notice must cover it.
+        await message(c, c.b, "theirs");
+        await message(c, c.a, "second");
+        expect(await s.claimNotice("message", c.b.id, params)).toBe(true);
+        await h.advance(HOUR);
+        expect(await targets("message")).toEqual([c.a.id, c.b.id]);
+      });
+
       it("skips a message the participant already read", async () => {
         const c = await conversation();
         await message(c, c.a, "hello");

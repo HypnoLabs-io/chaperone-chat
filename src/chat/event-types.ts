@@ -29,6 +29,12 @@ export const EVENT = {
   conversationReopened: "conversation_reopened",
   /** The host's hook threw: still closing, the sweep tries again. */
   closeFailed: "close_failed",
+  /** A notice handed to `notify.send` (its `meta.kind` says which); claimed under `maxPerDay` when set. */
+  noticeSent: "notice_sent",
+  /** `notify.send` threw. The notice isn't sent again: the next one covers it. */
+  noticeFailed: "notice_failed",
+  /** The once-a-day alert that Jev needs attention. */
+  troubleAlert: "trouble_alert",
 } as const;
 
 export type EventType = (typeof EVENT)[keyof typeof EVENT];

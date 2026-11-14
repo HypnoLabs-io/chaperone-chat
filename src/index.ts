@@ -11,23 +11,32 @@ import { createContext } from "./chat/context";
 import { createEngine, type Engine } from "./chat/engine";
 import { createLifecycle, type Lifecycle } from "./chat/lifecycle";
 import { createModeration, type Moderation } from "./chat/moderate";
+import { createSweep, type SweepReport, type SweeperOptions } from "./chat/sweep";
 
 export interface Chat extends Engine, Pick<Lifecycle, "resolve" | "close"> {
   /** The held queue, whole conversations, and approve, refuse, hide and retry on one message. */
   readonly moderation: Moderation;
-  /** For the sweep (`sweep()`): close what is past its deadline, and finish closes whose hook failed. */
+  /** The sweep's parts: close what is past its deadline, and finish closes whose hook failed. */
   readonly lifecycle: Lifecycle;
+  /** Expiry, stuck closes, held messages, notices and retention, in one idempotent call. Run it on a schedule. */
+  sweep(options?: { limit?: number }): Promise<SweepReport>;
+  /** Runs `sweep()` on an interval in this process. */
+  startSweeper(options?: SweeperOptions): { stop(): void };
 }
 
 export function createChat(config: ChatConfig): Chat {
   const context = createContext(resolveConfig(config));
   const lifecycle = createLifecycle(context);
+  const moderation = createModeration(context);
+  const sweeper = createSweep(context, lifecycle, moderation);
   return {
     ...createEngine(context),
     resolve: lifecycle.resolve,
     close: lifecycle.close,
     lifecycle,
-    moderation: createModeration(context),
+    moderation,
+    sweep: sweeper.sweep,
+    startSweeper: sweeper.startSweeper,
   };
 }
 
@@ -42,8 +51,15 @@ export {
   type LinkOptions,
   type MessageOptions,
   type Notes,
+  type Notice,
+  type NotifyOptions,
   type OutcomeRule,
+  type ParticipantNotice,
+  type RetentionOptions,
+  type TroubleNotice,
 } from "./chat/config";
+export { TROUBLE_STREAK, type SweepReport, type SweeperOptions } from "./chat/sweep";
+export { listNames, renderNotice, timeLeft, type RenderedNotice, type RenderOptions } from "./notices/render";
 export type { CloseResult, ResolveResult } from "./chat/lifecycle";
 export type { ModerationResult, ModeratorMessage, ModeratorThread, RetryOutcome } from "./chat/moderate";
 export {

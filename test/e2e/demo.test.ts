@@ -189,3 +189,31 @@ describe("the demo with Jev and a moderator", () => {
     }
   });
 });
+
+describe("the demo's sweep", () => {
+  it("finishes a close whose hook threw, leaving it closing until then", async () => {
+    let broken = true;
+    const demo2 = await startDemo({
+      port: 0,
+      chat: { staleClosingMs: 0, hooks: { beforeClose: () => { if (broken) throw new Error("billing down"); } } },
+    });
+    try {
+      const o = (await fetch(`${demo2.url}/api/open`, { method: "POST" }).then((r) => r.json())) as {
+        conversationId: string;
+        links: { url: string }[];
+      };
+      const [buyer, seller] = o.links.map((l) => decodeURIComponent(l.url.split("#t=")[1]!));
+      const post = (token: string, body: Record<string, unknown>) =>
+        fetch(`${demo2.url}/api/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, ...body }) }).then(
+          async (r) => ({ status: r.status, body: (await r.json()) as Record<string, any> }),
+        );
+      expect(await post(buyer!, { step: "resolve", outcome: "end" })).toMatchObject({ status: 200, body: { state: "closing" } });
+      expect(await post(seller!, { step: "send", text: "Still there?" })).toMatchObject({ status: 409 });
+      broken = false;
+      expect((await demo2.chat.sweep()).finished).toBe(1);
+      expect((await post(seller!, { step: "load" })).body.thread.conversation).toMatchObject({ state: "closed", outcome: "end" });
+    } finally {
+      await demo2.close();
+    }
+  });
+});

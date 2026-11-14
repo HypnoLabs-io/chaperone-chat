@@ -213,7 +213,11 @@ export interface Store {
   findStaleClosing(input: { olderThanMs: number; limit: number }): Promise<{ id: string; outcome: string; by: string }[]>;
 
   // --- notices ---
-  /** Participants due a notice of `kind`, by the rules in `NoticeParams`. */
+  /**
+   * Participants due a notice of `kind`, by the rules in `NoticeParams`, oldest conversation first. `message`: open,
+   * past the throttle, with a delivered message from someone else that is older than the grace period, newer than
+   * their read mark, and newer than what their last notice covered (its stamp less the grace period).
+   */
   findNoticeTargets(
     kind: NoticeKind,
     params: NoticeParams & { limit: number },

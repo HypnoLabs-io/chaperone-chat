@@ -80,7 +80,9 @@ export function memoryStore(options: MemoryStoreOptions = {}): Store {
     if (kind === "message") {
       if (!isOpen(c, at)) return false;
       if (p.notifiedAt && p.notifiedAt.getTime() > t - params.everyMs) return false;
-      const after = Math.max(ms(p.readAt) ?? -Infinity, ms(p.notifiedAt) ?? -Infinity);
+      // The last notice covered what was old enough then: a message from the grace period before it still counts.
+      const covered = p.notifiedAt ? p.notifiedAt.getTime() - params.graceMs : -Infinity;
+      const after = Math.max(ms(p.readAt) ?? -Infinity, covered);
       return messagesIn(c.id).some(
         (m) =>
           m.participantId !== p.id &&
@@ -389,7 +391,11 @@ export function memoryStore(options: MemoryStoreOptions = {}): Store {
       const at = now();
       return [...participants.values()]
         .filter((p) => due(kind, p, params, at))
-        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : 1))
+        .sort(
+          (a, b) =>
+            a.createdAt.getTime() - b.createdAt.getTime() ||
+            (a.conversationId < b.conversationId ? -1 : a.conversationId > b.conversationId ? 1 : a.position - b.position),
+        )
         .slice(0, params.limit)
         .map((p) => ({ participantId: p.id, conversationId: p.conversationId }));
     },
