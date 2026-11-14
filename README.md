@@ -30,22 +30,13 @@ check after each one.
 
 ## Features
 
-- **It reads past the tricks.** "eight six seven…", an email with its letters spaced apart, a phone number sent as
-  "312", "555" and "0142" over three messages. The rules catch them all, in English and Spanish, and refuse them on
-  the spot with a sentence that says why.
-- **Nothing unchecked goes out.** What the rules pass, TypeSafe's Jev reads with the conversation before it, so
-  "Drop me a line sometime" doesn't slip through. If Jev is slow, down or past your daily cap, the message waits for
-  a check. A refused message is never stored.
-- **Calibrated in the open.** The cutoffs were measured on 595 labelled messages and threads that ship in
-  `corpus/`: not one clean message refused outright, and the one known miss [named in the
-  docs](docs/calibration.md#the-results). They're pinned to the model, so an upgrade can't quietly move them. One
-  command calibrates a policy of your own.
-- **Every conversation ends on purpose.** `sold` on the seller's vote, `swap` only when everyone opts in, `expired`
-  at the deadline. Your `beforeClose` hook runs first, so contact details change hands when your platform says so,
-  and not a message sooner.
-- **Drops in without a sign-up.** Each person joins through a signed, expiring link that never reaches your access
-  logs. Behind it: one Web-standard route for Node, Bun, Deno and edge workers, Postgres over any driver, a themed
-  React component, and no runtime dependencies.
+- Catches phone numbers and emails even when they're spelled out, spaced apart or split across several messages, in
+  English and Spanish.
+- An AI model reads every message in context before anyone sees it, and nothing unchecked ever goes out.
+- Tested on 595 labelled messages that ship with the package, and not one clean message was blocked outright.
+- People swap contact details only when you say so, like after a sale or when both sides say yes.
+- People join with a link and no sign-up, and it drops into your app with one route, one React component and zero
+  runtime dependencies.
 
 ## 01 · The rules
 
