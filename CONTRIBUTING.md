@@ -24,6 +24,15 @@ PG_URL=postgres://postgres:pw@localhost:54329/postgres npm run test:pg
 
 `npm run demo` starts the demo (see the README).
 
+Before a release, run `npm run smoke:pack`. It installs the packed package in an empty folder, the way someone else
+would, then runs four checks:
+- the README's quickstart, comparing its output with the README's;
+- every entry, from ESM and from CommonJS;
+- TypeScript under node16 and bundler resolution;
+- the command line.
+
+It needs the network.
+
 ## The rules of the codebase
 
 - **Runtime-neutral entries.** Outside `src/cli/index.ts` and `src/http/node.ts`, nothing uses `process`,

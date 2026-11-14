@@ -27,5 +27,7 @@
     }
   },
   "include": ["src", "test", "examples", "*.config.ts"],
-  "exclude": ["node_modules", "dist", "src/client", "src/react", "test/client", "test/react"]
+  // test/smoke is checked the way someone else's project would check it, against the packed package
+  // (npm run smoke:pack).
+  "exclude": ["node_modules", "dist", "src/client", "src/react", "test/client", "test/react", "test/smoke"]
 }

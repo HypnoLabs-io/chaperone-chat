@@ -125,7 +125,8 @@
     "test:pg": "vitest run --config vitest.pg.config.ts",
     "lint:package": "publint && attw --pack . --profile node16 --exclude-entrypoints ./react/styles.css",
     "demo": "node examples/demo/server.mjs",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "smoke:pack": "bash scripts/smoke-pack.sh"
   },
   "peerDependencies": {
     "react": ">=18"
