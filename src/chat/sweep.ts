@@ -53,11 +53,11 @@ export function createSweep(c: ChatContext, lifecycle: Lifecycle, moderation: Mo
   async function record(kind: string, conversationId: string | null, participantId: string | null): Promise<boolean> {
     const event = { id: newId("e"), type: EVENT.noticeSent, conversationId, participantId, meta: { kind } };
     const n = r.notify!;
-    if (n.maxPerDay === null) {
-      await store.appendEvent(event);
-      return true;
-    }
-    return store.claimEventUnderCap(event, { type: EVENT.noticeSent, max: n.maxPerDay, windowMs: DAY });
+    let recorded = true;
+    if (n.maxPerDay === null) await store.appendEvent(event);
+    else recorded = await store.claimEventUnderCap(event, { type: EVENT.noticeSent, max: n.maxPerDay, windowMs: DAY });
+    if (recorded) await c.announce(event);
+    return recorded;
   }
   const budgeted = () => r.notify!.maxPerDay !== null;
 
@@ -112,10 +112,9 @@ export function createSweep(c: ChatContext, lifecycle: Lifecycle, moderation: Mo
           ? "failing"
           : null;
     if (!why) return { sent: 0, failed: 0 };
-    const claimed = await store.claimEventUnderCap(
-      { id: newId("e"), type: EVENT.troubleAlert, meta: { why, calls: health.calls } },
-      { type: EVENT.troubleAlert, max: 1, windowMs: DAY },
-    );
+    const alert = { id: newId("e"), type: EVENT.troubleAlert, meta: { why, calls: health.calls } };
+    const claimed = await store.claimEventUnderCap(alert, { type: EVENT.troubleAlert, max: 1, windowMs: DAY });
+    if (claimed) await c.announce(alert);
     if (!claimed || !(await record("trouble", null, null))) return { sent: 0, failed: 0 };
     const ok = await deliver({ kind: "trouble", why, calls: health.calls, cap: r.dailyCap, failedInARow: health.failed }, null, null);
     return ok ? { sent: 1, failed: 0 } : { sent: 0, failed: 1 };

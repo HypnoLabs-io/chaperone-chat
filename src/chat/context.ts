@@ -40,17 +40,28 @@ export function verdictMeta(verdict: Verdict, appeal: boolean): { [key: string]:
 export function createContext(r: Resolved) {
   const { store, links } = r;
 
+  /** Tells the host's `onEvent` about an event once it is recorded, the claimed ones included. */
+  async function announce(e: { id: string; type: string; conversationId?: string | null; participantId?: string | null; meta: Json }): Promise<void> {
+    if (!r.hooks.onEvent) return;
+    const seen: ChatEvent = {
+      id: e.id,
+      type: e.type,
+      conversationId: e.conversationId ?? null,
+      participantId: e.participantId ?? null,
+      meta: e.meta,
+      at: new Date(),
+    };
+    try {
+      await r.hooks.onEvent(seen);
+    } catch {
+      // The action has happened; a failing listener doesn't undo it.
+    }
+  }
+
   async function event(type: string, conversationId: string | null, participantId: string | null, meta: Json = {}): Promise<void> {
     const id = newId("e");
     await store.appendEvent({ id, type, conversationId, participantId, meta });
-    if (r.hooks.onEvent) {
-      const e: ChatEvent = { id, type, conversationId, participantId, meta, at: new Date() };
-      try {
-        await r.hooks.onEvent(e);
-      } catch {
-        // The action has happened; a failing listener doesn't undo it.
-      }
-    }
+    await announce({ id, type, conversationId, participantId, meta });
   }
 
   function linkExpiry(deadline: Date | null, now: Date): Date {
@@ -87,6 +98,7 @@ export function createContext(r: Resolved) {
           ? { p: round3(result.p), model: base.model, ...(result.usage ? { usage: { ...result.usage } } : {}) }
           : { failure: result.failure };
         await store.setEventMeta(call.id, recorded).catch(() => undefined);
+        await announce({ ...call, meta: { ...call.meta, ...recorded } });
         return result;
       },
     };
@@ -143,7 +155,7 @@ export function createContext(r: Resolved) {
     );
   }
 
-  return { r, store, guard: r.guard, links, event, mint, screen };
+  return { r, store, guard: r.guard, links, event, announce, mint, screen };
 }
 
 export type ChatContext = ReturnType<typeof createContext>;
