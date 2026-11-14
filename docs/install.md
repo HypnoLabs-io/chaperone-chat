@@ -3,6 +3,8 @@
 From `npm install` to a working chat on your own server. The examples use Next.js and Postgres. Any framework
 works, because the handler is a plain `(Request) => Promise<Response>`, and any Postgres driver works.
 
+Using a coding agent? Hand it the [install guide for agents](install-agent.md) instead.
+
 - [Requirements](#requirements)
 - [1. Install](#1-install)
 - [2. Try the screen](#2-try-the-screen)

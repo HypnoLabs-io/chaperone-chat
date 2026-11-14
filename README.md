@@ -4,6 +4,7 @@
 
 <p align="center">
   <a href="docs/install.md"><b>Install guide</b></a> ·
+  <a href="docs/install-agent.md">For coding agents</a> ·
   <a href="docs/reference.md">Reference</a> ·
   <a href="docs/recipes.md">Recipes</a> ·
   <a href="#docs">All docs</a>
@@ -23,7 +24,9 @@ npm install chaperone-chat
 ```
 
 Then the **[install guide](docs/install.md)** takes you from one file that shows what the rules refuse to a
-working chat in your app: the store, the route, the component, the sweep and moderation.
+working chat in your app: the store, the route, the component, the sweep and moderation. Using a coding agent? Point
+it at the **[install guide for agents](docs/install-agent.md)**: the same steps, the questions to ask you, and a
+check after each one.
 
 ## 01 · The rules
 
@@ -71,6 +74,8 @@ TypeSafe. Jev is TypeSafe's product: you use it with your own account and under 
 ## Docs
 
 - [Install guide](docs/install.md): from `npm install` to a working chat
+- [Install guide for agents](docs/install-agent.md): the same install, for a coding agent to follow, with a check
+  after each step
 - [Reference](docs/reference.md): every entry point, option and default
 - [Recipes](docs/recipes.md): a marketplace, dating, recruiting and peer support
 - [Configuration](docs/configuration.md): every option by area, with examples
