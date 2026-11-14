@@ -26,9 +26,17 @@ export const CONTACT_REASON = "That looks like a way to get in touch outside thi
 /**
  * The measured cutoffs, by scope, with the model and the question's fingerprint they were measured under. A change
  * to the question or its lines changes the fingerprint, so the policy reads as uncalibrated (and a test fails) until
- * it is calibrated again. Empty until calibrated.
+ * it is calibrated again.
+ *
+ * From `corpus/contact-scores.json` (595 samples and threads, state shape 1; `docs/calibration.md`): block sits a
+ * margin above every clean message Jev reads, review a margin below every contact detail the rules miss but one (a
+ * bare username with nothing around it, "I'm hikingwithdana everywhere."). Off-platform: no clean message refused
+ * outright, 1.7% of them refused with an appeal. Details-only: none refused outright, 1.6% with an appeal.
  */
-export const CONTACT_CUTOFFS: Readonly<Partial<Record<ContactScope, Cutoffs>>> = {};
+export const CONTACT_CUTOFFS: Readonly<Partial<Record<ContactScope, Cutoffs>>> = {
+  "off-platform": { model: "jev-1.13.0", fingerprint: "6ce551c1", block: 0.5, review: 0.2 },
+  "details-only": { model: "jev-1.13.0", fingerprint: "30250a75", block: 0.5, review: 0.25 },
+};
 
 export interface ContactLeakOptions {
   /** Default `off-platform`. */
