@@ -4,8 +4,7 @@
  */
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { postgresStore } from "../../src/postgres";
-import type { Store } from "../../src/store/types";
+import { postgresStore, type PostgresStore } from "../../src/postgres";
 import { storeConformance } from "../store/conformance";
 
 const PG_URL = process.env.PG_URL;
@@ -35,7 +34,7 @@ storeConformance("postgresStore on a real server", async () => {
     prefix: `c${run}_${++tables}_`,
     clock: "current_setting('chaperone.now')::timestamptz",
   });
-  await store.migrate!();
+  await store.migrate();
   return {
     store,
     async advance(ms) {
@@ -46,14 +45,14 @@ storeConformance("postgresStore on a real server", async () => {
 });
 
 describe("races, over a pool of connections", () => {
-  let store: Store;
+  let store: PostgresStore;
   let n = 0;
   const id = (prefix: string) => `${prefix}_${run}_${++n}`;
   const DAY = 86_400_000;
 
   beforeAll(async () => {
     store = postgresStore((text, params) => pool.query(text, params), { prefix: `r${run}_` });
-    await store.migrate!();
+    await store.migrate();
   });
 
   async function pair() {

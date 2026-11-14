@@ -22,7 +22,7 @@ storeConformance("postgresStore on PGlite", async () => {
   await setClock(now);
   // A fresh set of tables for each test.
   const store = postgresStore((text, params) => db!.query(text, params), { prefix: `t${++tables}_`, clock: CLOCK });
-  await store.migrate!();
+  await store.migrate();
   return {
     store,
     async advance(ms) {
@@ -36,8 +36,8 @@ describe("the schema", () => {
   it("is idempotent: migrating twice changes nothing", async () => {
     const pg = new PGlite();
     const store = postgresStore((text, params) => pg.query(text, params), { prefix: "twice_" });
-    await store.migrate!();
-    await store.migrate!();
+    await store.migrate();
+    await store.migrate();
     const tablesFound = await pg.query<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'twice_%' ORDER BY table_name",
     );
@@ -74,7 +74,7 @@ describe("the schema", () => {
     const store = postgresStore(async (text, params) => (await pg.query(text, params)).rows as Record<string, unknown>[], {
       prefix: "arr_",
     });
-    await store.migrate!();
+    await store.migrate();
     const made = await store.createConversation({
       id: "c1",
       deadlineInMs: null,

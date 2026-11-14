@@ -49,7 +49,7 @@ const STORES: [string, () => Promise<Harness>][] = [
       const set = () => pg!.query(`SET chaperone.now = '${new Date(now).toISOString()}'`);
       await set();
       const store = postgresStore((t, p) => pg!.query(t, p), { prefix: `s${++tables}_`, clock: "current_setting('chaperone.now')::timestamptz" });
-      await store.migrate!();
+      await store.migrate();
       return { store, advance: async (ms) => { now += ms; await set(); } };
     },
   ],

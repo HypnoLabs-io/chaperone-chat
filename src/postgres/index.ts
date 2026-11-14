@@ -8,6 +8,6 @@
  *
  * Or run `schemaSql()` (`npx chaperone-chat schema`) through a migration tool of your own.
  */
-export { postgresStore, type PostgresStoreOptions, type Query, type QueryResult } from "./store";
+export { postgresStore, type PostgresStore, type PostgresStoreOptions, type Query, type QueryResult } from "./store";
 export { checkPrefix, DEFAULT_PREFIX, SCHEMA_VERSION, schemaSql, schemaStatements } from "./schema";
 export { ChaperoneError, isChaperoneError } from "../errors";

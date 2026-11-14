@@ -94,7 +94,13 @@ function messageFrom(r: Row): MessageRow {
 const json = (v: unknown): unknown => (typeof v === "string" ? JSON.parse(v) : v);
 const list = (v: unknown): Row[] => ((json(v) ?? []) as Row[]) ?? [];
 
-export function postgresStore(query: Query, options: PostgresStoreOptions = {}): Store {
+/** The Postgres store: a `Store` whose `migrate()` is always there. */
+export interface PostgresStore extends Store {
+  /** Creates the tables and indexes that aren't there yet. Every statement is `IF NOT EXISTS`: safe on every boot. */
+  migrate(): Promise<void>;
+}
+
+export function postgresStore(query: Query, options: PostgresStoreOptions = {}): PostgresStore {
   if (typeof query !== "function") {
     throw new ChaperoneError("invalid_option", "postgresStore needs a query(text, params) function");
   }
