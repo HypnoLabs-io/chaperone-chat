@@ -1,16 +1,19 @@
 /**
- * Part of `npm run smoke:pack`. Writes every README code block whose first line is a path comment (`// lib/chat.ts`)
- * into <out>/<that path>, and the quickstart's printed output (the text block after `$ node try.mjs`) into
- * <out>/try.expected.
+ * Part of `npm run smoke:pack`. Writes every code block of a markdown page whose first line is a path comment
+ * (`// lib/chat.ts`) into <out>/<that path>, and the quickstart's printed output (the text block after
+ * `$ node try.mjs`) into <out>/try.expected.
  *
  *   node readme-files.mjs node_modules/chaperone-chat/README.md readme
+ *   node readme-files.mjs docs/recipes.md docs/recipes --files-only   (a page without the quickstart)
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-const [readme, out] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const filesOnly = args.includes("--files-only");
+const [readme, out] = args.filter((a) => a !== "--files-only");
 if (!readme || !out) {
-  console.error("usage: node readme-files.mjs <README.md> <out dir>");
+  console.error("usage: node readme-files.mjs <page.md> <out dir> [--files-only]");
   process.exit(2);
 }
 
@@ -39,8 +42,12 @@ for (const line of readFileSync(readme, "utf8").split("\n")) {
   }
   open = null;
 }
-if (!written.includes("try.mjs") || !written.includes("try.expected")) {
+if (!filesOnly && (!written.includes("try.mjs") || !written.includes("try.expected"))) {
   console.error("readme-files: the README's quickstart (try.mjs and its output) wasn't found");
   process.exit(1);
 }
-console.log(`readme-files: ${written.length} files from the README`);
+if (written.length === 0) {
+  console.error(`readme-files: no file blocks in ${readme}`);
+  process.exit(1);
+}
+console.log(`readme-files: ${written.length} files from ${readme}`);

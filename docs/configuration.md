@@ -1,6 +1,7 @@
 # Configuration
 
-The README's tables list every option and its default. This page goes through them by area, with examples.
+The [reference](reference.md) lists every option and its default. This page goes through them by area, with
+examples.
 
 - [Links and secrets](#links-and-secrets)
 - [Deadlines](#deadlines)

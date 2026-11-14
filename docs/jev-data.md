@@ -110,4 +110,4 @@ Each attempt times out after `timeoutMs` (3 seconds by default). A 429 or 529 is
   privacy policy.
 - To send nothing to TypeSafe, set `jev: false` and the rules work alone. `mode: "observe"` still sends.
 
-chaperone-chat is not affiliated with TypeSafe. See the [README](../README.md#jev).
+chaperone-chat is not affiliated with TypeSafe. See [Jev](reference.md#jev) in the reference.

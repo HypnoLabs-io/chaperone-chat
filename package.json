@@ -15,6 +15,14 @@
   ],
   "license": "MIT",
   "author": "Hypno Labs LLC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HypnoLabs-io/chaperone-chat.git"
+  },
+  "homepage": "https://github.com/HypnoLabs-io/chaperone-chat#readme",
+  "bugs": {
+    "url": "https://github.com/HypnoLabs-io/chaperone-chat/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22"

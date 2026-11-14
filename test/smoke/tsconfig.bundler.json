@@ -5,5 +5,5 @@
     "strict": true, "noEmit": true, "skipLibCheck": false, "esModuleInterop": true,
     "allowJs": true, "checkJs": true
   },
-  "include": ["readme/**/*.ts", "readme/**/*.tsx", "readme/**/*.mjs"]
+  "include": ["readme/**/*.ts", "readme/**/*.tsx", "readme/**/*.mjs", "docs/**/*.ts", "docs/**/*.tsx", "docs/**/*.mjs"]
 }

@@ -119,7 +119,7 @@ describe("the docs' code", () => {
 
   it("finds the README's blocks", () => {
     expect(docs()).toContain("README.md");
-    expect(blocks.filter((b) => b.doc === "README.md").length).toBeGreaterThanOrEqual(6);
+    expect(blocks.filter((b) => b.doc === "README.md").length).toBeGreaterThanOrEqual(4);
   });
 
   it("compiles against the source", { timeout: 60_000 }, () => {
