@@ -22,6 +22,9 @@ landlord before the viewing.
 npm install chaperone-chat
 ```
 
+Then the **[install guide](docs/install.md)** takes you from one file that shows what the rules refuse to a
+working chat in your app: the store, the route, the component, the sweep and moderation.
+
 ## 01 · The rules
 
 <img src="docs/assets/concept-rules.gif" width="880" alt="A message reads 'my number is three one two five five five zero one four two'. The rules read the number words as 312 555 0142 and refuse it; the sender reads 'That looks like a phone number.' Then a spaced-out email, a handle and 'Let's move this to WhatsApp' are refused the same way.">
@@ -45,88 +48,6 @@ later check. The scores above are real: `jev-1.13.0` on the labelled corpus that
 You name the ways a conversation can end: one vote (`sold`, by the seller) or a double opt-in (`swap`, by
 everyone). At its deadline it closes as `expired`. Your `beforeClose` hook runs first, to mark the item sold, share
 the two people's details or book the interview.
-
-## Try it
-
-```js
-// try.mjs
-import { createChat, memoryStore } from "chaperone-chat";
-
-const chat = createChat({
-  secret: crypto.randomUUID() + crypto.randomUUID(), // signs the links: use a fixed secret of your own in production
-  store: memoryStore(),
-  jev: false, // the rules alone; pass { apiKey } to add Jev
-});
-
-const { links } = await chat.open({
-  participants: [
-    { role: "buyer", alias: "Sam" },
-    { role: "seller", alias: "Alex" },
-  ],
-});
-const sam = links[0].participantId;
-
-for (const text of [
-  "Is the bike still for sale?",
-  "Text me on 312 555 0142",
-  "my number is three one two five five five zero one four two",
-  "Let's move this to WhatsApp",
-  "Can we meet at the shop on Saturday?",
-]) {
-  const result = await chat.send(sam, text);
-  console.log(result.ok ? `sent     ${text}` : `refused  ${text}  (${result.message})`);
-}
-```
-
-```text
-$ node try.mjs
-sent     Is the bike still for sale?
-refused  Text me on 312 555 0142  (That looks like a phone number.)
-refused  my number is three one two five five five zero one four two  (That looks like a phone number.)
-refused  Let's move this to WhatsApp  (That names an app or site for talking or paying outside this chat.)
-sent     Can we meet at the shop on Saturday?
-```
-
-## Put it in your app
-
-Three files in Next.js:
-
-```ts
-// lib/chat.ts
-import { createChat } from "chaperone-chat";
-import { postgresStore } from "chaperone-chat/postgres";
-import pg from "pg";
-
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-
-export const chat = createChat({
-  secret: process.env.CHAT_LINK_SECRET!, // 32 characters or more
-  store: postgresStore((text, params) => pool.query(text, params)),
-  jev: { apiKey: process.env.TYPESAFE_API_KEY! },
-});
-```
-
-```ts
-// app/api/chat/route.ts
-import { createChatHandler } from "chaperone-chat/http";
-import { chat } from "../../../lib/chat";
-
-export const POST = createChatHandler(chat);
-```
-
-```tsx
-// app/chat/page.tsx
-"use client";
-import { ChatThread } from "chaperone-chat/react";
-import "chaperone-chat/react/styles.css";
-
-export default function ChatPage() {
-  return <ChatThread endpoint="/api/chat" />;
-}
-```
-
-Then create the tables, open conversations, run the sweep and add moderation: the
-**[install guide](docs/install.md)** walks through every step.
 
 ## In the box
 

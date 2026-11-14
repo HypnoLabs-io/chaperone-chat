@@ -3,7 +3,7 @@
  * (`// lib/chat.ts`) into <out>/<that path>, and the quickstart's printed output (the text block after
  * `$ node try.mjs`) into <out>/try.expected.
  *
- *   node readme-files.mjs node_modules/chaperone-chat/README.md readme
+ *   node readme-files.mjs docs/install.md docs/install
  *   node readme-files.mjs docs/recipes.md docs/recipes --files-only   (a page without the quickstart)
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -43,7 +43,7 @@ for (const line of readFileSync(readme, "utf8").split("\n")) {
   open = null;
 }
 if (!filesOnly && (!written.includes("try.mjs") || !written.includes("try.expected"))) {
-  console.error("readme-files: the README's quickstart (try.mjs and its output) wasn't found");
+  console.error(`readme-files: the quickstart (try.mjs and its output) wasn't found in ${readme}`);
   process.exit(1);
 }
 if (written.length === 0) {

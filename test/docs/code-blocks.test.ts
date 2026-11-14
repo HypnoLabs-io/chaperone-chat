@@ -117,9 +117,9 @@ describe("the docs' code", () => {
   const all = docs().map(blocksOf);
   const blocks = all.flatMap((d) => d.blocks);
 
-  it("finds the README's blocks", () => {
-    expect(docs()).toContain("README.md");
-    expect(blocks.filter((b) => b.doc === "README.md").length).toBeGreaterThanOrEqual(4);
+  it("finds the install guide's blocks", () => {
+    expect(docs()).toContain("docs/install.md");
+    expect(blocks.filter((b) => b.doc === "docs/install.md").length).toBeGreaterThanOrEqual(6);
   });
 
   it("compiles against the source", { timeout: 60_000 }, () => {
