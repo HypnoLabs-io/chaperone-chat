@@ -22,6 +22,11 @@ const NOT_A_STREET = new Set(
   ).split(" "),
 );
 
+/** The abbreviations a street's name can hold with a full stop: directions, titles and places ("Dr. King Blvd"). */
+const NAME_ABBREVIATIONS = new Set(
+  "n s e w ne nw se sw st mt ft pt dr jr sr gen adm col lt sgt pres rev hon msgr mass".split(" "),
+);
+
 const STREET_SUFFIX =
   "street|st|avenue|ave|av|road|rd|boulevard|blvd|place|pl|lane|ln|drive|dr|court|ct|parkway|pkwy|terrace|ter|" +
   "plaza|square|sq|highway|hwy|turnpike|tpke|crescent";
@@ -61,11 +66,13 @@ const detectors: Detector[] = [
       String.raw`\b\d{1,5}[a-z]?(?:-\d{1,4})?\s{1,3}((?:[a-z0-9'’]{1,30}\.?\s{1,3}){1,3})(?:${STREET_SUFFIX})\b\.?`,
       "gi",
     ),
-    keep: (m) =>
-      (m[1] ?? "")
-        .trim()
-        .split(/\s/)
-        .every((w) => !NOT_A_STREET.has(w.toLowerCase().replace(/[.'’]/g, ""))),
+    keep: (m) => {
+      const words = (m[1] ?? "").trim().split(/\s/);
+      // A word with a full stop ends a sentence ("…30 inches. It's 650 square feet"), unless it is an abbreviation
+      // a street's name holds ("W. 33rd St", "Mt. Vernon Pl").
+      if (words.some((w) => w.endsWith(".") && !NAME_ABBREVIATIONS.has(w.slice(0, -1).toLowerCase()))) return false;
+      return words.every((w) => !NOT_A_STREET.has(w.toLowerCase().replace(/[.'’]/g, "")));
+    },
   },
   { kind: "address", re: /\b(?:apt|apartment|suite|ste)\.?\s{0,3}#?\s{0,3}\d{1,5}[a-z]?\b/gi },
   // A state and its ZIP code. The two-letter codes only in capitals: "in 10000 steps" is not Indiana.

@@ -95,6 +95,19 @@ describe("the rules", () => {
     expect(kinds("We're at 85 Riverside Pkwy.")).toEqual(["address"]);
   });
 
+  it("don't read a street across the end of a sentence", () => {
+    // Clean sentences side by side: "9 10. It's 650 square" and "30 inches. It's 650 square" aren't streets.
+    expect(rules.find("My son can count to 10: 1 2 3 4 5 6 7 8 9 10. It's 650 square feet.")).toEqual([]);
+    expect(rules.find("Table 4 seats 10. Union Square is a short walk.")).toEqual([]);
+    expect(rules.find("Measurements are 84 x 36 x 30 inches. It's 650 square feet.")).toEqual([]);
+    // Nor once number words are read as digits ("one on one" → "1 on 1").
+    expect(rules.find("I'd like one on one coaching. It's 650 square feet.")).toEqual([]);
+    // The abbreviations a street's name holds keep their full stop.
+    expect(kinds("We're at 450 W. 33rd St.")).toEqual(["address"]);
+    expect(kinds("It's 12 Mt. Vernon Pl, second floor.")).toEqual(["address"]);
+    expect(kinds("Meet me at 77 Mass. Ave.")).toEqual(["address"]);
+  });
+
   it("read a state and its ZIP code, the two-letter code only in capitals", () => {
     expect(kinds("Springfield, IL 62704")).toEqual(["address"]);
     expect(kinds("Albany, new york 12207")).toEqual(["address"]);
