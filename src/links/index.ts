@@ -60,10 +60,18 @@ export function tokenFragment(token: string): string {
 }
 
 export function createLinks(options: LinksOptions): Links {
-  const secrets = (typeof options.secret === "string" ? [options.secret] : [...options.secret]).map((s) =>
-    typeof s === "string" ? s.trim() : "",
-  );
-  if (secrets.length === 0 || secrets.some((s) => s.length < MIN_SECRET_LENGTH)) {
+  const given: unknown = options.secret;
+  const list =
+    typeof given === "string" ? [given] : given != null && typeof given === "object" && Symbol.iterator in given ? [...(given as Iterable<unknown>)] : [];
+  const secrets = list.map((s) => (typeof s === "string" ? s.trim() : ""));
+  // Missing, as when the variable that should hold it isn't set: say so, rather than call it short.
+  if (secrets.every((s) => s === "")) {
+    throw new ChaperoneError(
+      "invalid_secret",
+      `no link secret was given: pass \`secret\`, a string of ${MIN_SECRET_LENGTH} characters or more (or a list of them, to rotate)`,
+    );
+  }
+  if (secrets.some((s) => s.length < MIN_SECRET_LENGTH)) {
     throw new ChaperoneError(
       "invalid_secret",
       `every link secret must be at least ${MIN_SECRET_LENGTH} characters; a short or placeholder secret lets anyone forge a link`,

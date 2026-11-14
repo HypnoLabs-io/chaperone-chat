@@ -211,8 +211,8 @@ The package's tests run on `pg` and PGlite. For any other driver, the check in [
 the proof. `pg` needs Node's sockets: on an edge runtime, use an HTTP driver such as Neon's, or run the route on
 Node.
 
-**Check.** The project's typecheck passes, and the server starts. `invalid_secret` or
-`options.secret is not iterable` at startup means the secret isn't loaded.
+**Check.** The project's typecheck passes, and the server starts. `invalid_secret` at startup means the secret
+isn't loaded ("no link secret was given") or is too short.
 
 ## 6. Serve the route
 
@@ -459,7 +459,7 @@ Run the project's typecheck, lint and tests, and the step 8 check with `CLEANUP=
 | `404`, or an HTML page | Nothing serves that path | Check the route's file and path against step 6 |
 | `401 invalid_link` with a fresh token | The script and the app sign with different secrets | Load the same env file in both |
 | `404 not_found` with a fresh token | The script and the app use different databases or prefixes | Use the same `DATABASE_URL` and prefix |
-| `invalid_secret`, or `options.secret is not iterable`, at startup | `CHAT_LINK_SECRET` is missing, shorter than 32 characters, or not loaded | Check the env file and how the app loads it |
+| `invalid_secret` at startup | "No link secret was given": `CHAT_LINK_SECRET` is missing or not loaded. Otherwise it is shorter than 32 characters | Check the env file and how the app loads it |
 | `invalid_option` at startup, naming `apiKey` | `jev` was given no key | `jev: key ? { apiKey: key } : false` |
 | Every message the rules pass is `held` | `jev` was given an empty key | The same |
 | `invalid_input` from `open()`, about an alias | The alias holds a contact detail | Use the role, or a name without one |

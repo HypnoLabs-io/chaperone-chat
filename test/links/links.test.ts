@@ -125,6 +125,20 @@ describe("configuration", () => {
     },
   );
 
+  it.each([[undefined], [null], [""], ["   "], [[]], [["", " "]], [42], [{}]])(
+    "says the secret is missing, not short, when none is given: %j",
+    async (secret) => {
+      const error = await errorOf(() => createLinks({ secret: secret as never }));
+      expect(isChaperoneError(error, "invalid_secret")).toBe(true);
+      expect((error as Error).message).toMatch(/^no link secret was given/);
+    },
+  );
+
+  it("says a short secret is short", async () => {
+    const error = await errorOf(() => createLinks({ secret: "short" }));
+    expect((error as Error).message).toMatch(/at least 32 characters/);
+  });
+
   it("refuses a bad kind, subject or expiry when signing", async () => {
     const links = createLinks({ secret: SECRET });
     for (const input of [

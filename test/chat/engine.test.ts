@@ -257,6 +257,7 @@ describe("load", () => {
 describe("configuration", () => {
   it.each([
     [{ secret: "short", store: memoryStore(), jev: false }, "invalid_secret"],
+    [{ secret: undefined, store: memoryStore(), jev: false }, "invalid_secret"],
     [{ secret: SECRET, jev: false }, "invalid_option"],
     [{ secret: SECRET, store: memoryStore(), jev: false, durationMs: -1 }, "invalid_option"],
     [{ secret: SECRET, store: memoryStore(), jev: false, messages: { maxChars: 0 } }, "invalid_option"],
