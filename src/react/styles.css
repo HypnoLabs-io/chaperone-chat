@@ -1,1 +1,211 @@
-/* chaperone-chat/react/styles.css: filled in from M9. */
+/*
+ * chaperone-chat/react/styles.css: the look of <ChatThread>. Every color and size is a variable: set them on
+ * .cc-thread (or anywhere above it) to match your product. Dark mode follows the system unless you set them.
+ */
+.cc-thread {
+  --cc-bg: #f7f6f3;
+  --cc-surface: #ffffff;
+  --cc-ink: #1d1d1b;
+  --cc-muted: #6b6a66;
+  --cc-line: #dddad3;
+  --cc-mine: #e4efe9;
+  --cc-theirs: #efede8;
+  --cc-accent: #2f6f5e;
+  --cc-accent-ink: #ffffff;
+  --cc-warn: #9a3b2a;
+  --cc-radius: 16px;
+  --cc-gap: 12px;
+  --cc-font: inherit;
+
+  display: grid;
+  gap: var(--cc-gap);
+  color: var(--cc-ink);
+  font-family: var(--cc-font);
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cc-thread {
+    --cc-bg: #161615;
+    --cc-surface: #1f1f1d;
+    --cc-ink: #ecebe7;
+    --cc-muted: #a3a19b;
+    --cc-line: #34332f;
+    --cc-mine: #23372f;
+    --cc-theirs: #2a2927;
+    --cc-accent: #6fb39c;
+    --cc-accent-ink: #10201b;
+    --cc-warn: #e48b77;
+  }
+}
+
+.cc-thread * {
+  box-sizing: border-box;
+}
+
+.cc-card {
+  background: var(--cc-surface);
+  border: 1px solid var(--cc-line);
+  border-radius: var(--cc-radius);
+  padding: 16px;
+}
+
+.cc-card > p {
+  margin: 0;
+}
+
+.cc-header {
+  display: grid;
+  gap: 4px;
+}
+
+.cc-kicker {
+  font-weight: 600;
+}
+
+.cc-status,
+.cc-muted,
+.cc-empty {
+  color: var(--cc-muted);
+  font-size: 0.875em;
+}
+
+.cc-empty {
+  text-align: center;
+  padding: 16px 0;
+}
+
+.cc-messages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cc-message {
+  max-width: 85%;
+  align-self: flex-start;
+  background: var(--cc-theirs);
+  border-radius: 14px;
+  padding: 8px 12px;
+}
+
+.cc-message--mine {
+  align-self: flex-end;
+  background: var(--cc-mine);
+}
+
+.cc-message--pending {
+  opacity: 0.75;
+}
+
+.cc-message p {
+  margin: 0;
+}
+
+.cc-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cc-note,
+.cc-meta {
+  color: var(--cc-muted);
+  font-size: 0.75em;
+}
+
+.cc-end {
+  height: 0;
+}
+
+.cc-composer {
+  display: grid;
+  gap: 8px;
+}
+
+.cc-textarea {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--cc-bg);
+  border: 1px solid var(--cc-line);
+  border-radius: 10px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.cc-textarea:focus-visible,
+.cc-button:focus-visible {
+  outline: 2px solid var(--cc-accent);
+  outline-offset: 2px;
+}
+
+.cc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cc-row--start {
+  justify-content: flex-start;
+}
+
+.cc-counter {
+  color: var(--cc-muted);
+  font-size: 0.75em;
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-counter--over,
+.cc-error {
+  color: var(--cc-warn);
+}
+
+.cc-alert,
+.cc-confirm {
+  display: grid;
+  gap: 8px;
+}
+
+.cc-alert p,
+.cc-confirm p {
+  margin: 0;
+}
+
+.cc-button {
+  font: inherit;
+  min-height: 44px;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 20px;
+  background: var(--cc-accent);
+  color: var(--cc-accent-ink);
+  cursor: pointer;
+}
+
+.cc-button--quiet {
+  background: transparent;
+  color: var(--cc-ink);
+  border: 1px solid var(--cc-line);
+}
+
+.cc-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cc-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
