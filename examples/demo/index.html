@@ -143,6 +143,12 @@
         : state.conversation.state === "closed" ? "This conversation has closed" : "Closing…";
       $("text").maxLength = state.maxChars;
       $("send").disabled = !state.conversation.open;
+      // Once it has ended (or is ending) there is nothing to write: the composer goes, with any old refusal in it.
+      if (!state.conversation.open && !$("composer").hidden) {
+        $("error").textContent = "";
+        $("appeal").hidden = true;
+      }
+      $("composer").hidden = !state.conversation.open;
       $("outcomes").replaceChildren(
         ...state.outcomes.map((outcome) => {
           const b = document.createElement("button");
