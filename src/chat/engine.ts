@@ -6,10 +6,10 @@
  * never the text.
  */
 import { ChaperoneError } from "../errors";
-import { check, type Judge, type Verdict } from "../guard/check";
-import type { Json, ParticipantRow } from "../store/types";
-import type { Resolved } from "./config";
+import type { Json } from "../store/types";
+import { DAY, LINK_KIND, verdictMeta, type ChatContext, type LinkInfo } from "./context";
 import { EVENT } from "./event-types";
+import { outcomesFor } from "./lifecycle";
 import { cleanText, newId, round3 } from "./util";
 import {
   byPosition,
@@ -22,11 +22,10 @@ import {
   type ThreadView,
 } from "./views";
 
-/** The link kind a participant's token carries. */
-export const LINK_KIND = "chat";
+export { LINK_KIND, type LinkInfo } from "./context";
+
 /** How far behind the store's clock a cursor starts, so a write that lands as a read runs is seen next time. */
 export const CURSOR_OVERLAP_MS = 5_000;
-const DAY = 86_400_000;
 const MAX_PARTICIPANTS = 50;
 
 export interface OpenInput {
@@ -38,16 +37,6 @@ export interface OpenInput {
   context?: Json;
   /** An idempotency key: opening twice with one key returns the first conversation (`created: false`). */
   key?: string | null;
-}
-
-export interface LinkInfo {
-  participantId: string;
-  role: string;
-  alias: string;
-  externalRef: string | null;
-  /** The signed token. Put it in a URL fragment: `${page}#t=${token}`. */
-  token: string;
-  expiresAt: Date;
 }
 
 export interface OpenResult {
@@ -67,107 +56,8 @@ function text(value: unknown, max: number, name: string, optional = false): stri
   return value.trim();
 }
 
-/** What a send's event records: what decided and how, never the text. */
-function verdictMeta(verdict: Verdict, appeal: boolean): { [key: string]: Json } {
-  return {
-    action: verdict.observed?.action ?? verdict.action,
-    decidedBy: verdict.observed?.decidedBy ?? verdict.decidedBy,
-    kind: verdict.observed?.kind ?? verdict.kind ?? null,
-    policy: verdict.observed?.policy ?? verdict.policy ?? null,
-    p: round3(verdict.observed?.p ?? verdict.p),
-    checkedBy: verdict.checkedBy,
-    appeal,
-    judgeFailure: verdict.observed?.judgeFailure ?? verdict.judgeFailure ?? null,
-    ...(verdict.observed ? { observed: true } : {}),
-  };
-}
-
-export function createEngine(r: Resolved) {
-  const { store, guard, links } = r;
-
-  function linkExpiry(deadline: Date | null, now: Date): Date {
-    return deadline ? new Date(deadline.getTime() + r.linkGraceMs) : new Date(now.getTime() + r.linkTtlMs);
-  }
-
-  async function mint(p: ParticipantRow, deadline: Date | null, now: Date): Promise<LinkInfo> {
-    const expiresAt = linkExpiry(deadline, now);
-    const token = await links.sign({ kind: LINK_KIND, subject: p.id, expiresAt, now });
-    return { participantId: p.id, role: p.role, alias: p.alias, externalRef: p.externalRef, token, expiresAt };
-  }
-
-  async function event(type: string, conversationId: string | null, participantId: string | null, meta: Json = {}) {
-    await store.appendEvent({ id: newId("e"), type, conversationId, participantId, meta });
-  }
-
-  /** Jev, claiming one call under the daily cap before each request and recording its score (never the text). */
-  function cappedJudge(conversationId: string, participantId: string): Judge | null {
-    const base = r.judge;
-    if (!base) return null;
-    return {
-      model: base.model,
-      async judge(policy, turns) {
-        const call = { id: newId("e"), type: EVENT.jevCall, conversationId, participantId, meta: { policy: policy.id } };
-        let claimed = false;
-        try {
-          claimed =
-            r.dailyCap === null
-              ? await store.appendEvent(call)
-              : await store.claimEventUnderCap(call, { type: EVENT.jevCall, max: r.dailyCap, windowMs: DAY });
-        } catch {
-          claimed = false;
-        }
-        // A spent or unreadable cap: no call, and the fallback decides.
-        if (!claimed) return { ok: false, failure: "unavailable" };
-        const result = await base.judge(policy, turns);
-        const recorded: { [key: string]: Json } = result.ok
-          ? { p: round3(result.p), model: base.model, ...(result.usage ? { usage: { ...result.usage } } : {}) }
-          : { failure: result.failure };
-        await store.setEventMeta(call.id, recorded).catch(() => undefined);
-        return result;
-      },
-    };
-  }
-
-  /** The check on one message: the rules, the split-message pass over the sender's recent messages, then Jev. */
-  async function screen(conversationId: string, participantId: string, text: string, appeal: boolean): Promise<Verdict> {
-    const contextTurns = r.judge ? r.contextTurns : 0;
-    let earlier: string[] = [];
-    let context: { sender: boolean; text: string }[] = [];
-    if (r.window || contextTurns > 0) {
-      const recent = await store.recentTurns({
-        conversationId,
-        senderId: participantId,
-        contextTurns,
-        windowMax: r.window?.maxEarlier ?? 0,
-        windowMs: r.window?.windowMs ?? 0,
-      });
-      if (r.window) {
-        const since = recent.now.getTime() - r.window.windowMs;
-        earlier = recent.turns
-          .filter((t) => t.participantId === participantId && t.sentAt.getTime() >= since)
-          .map((t) => t.body)
-          .slice(-r.window.maxEarlier);
-      }
-      if (contextTurns > 0) {
-        context = recent.turns.slice(-contextTurns).map((t) => ({ sender: t.participantId === participantId, text: t.body }));
-      }
-    }
-    return check(
-      { text, earlier, context, appeal },
-      {
-        guard,
-        judge: cappedJudge(conversationId, participantId),
-        policies: r.policies,
-        window: r.window ? { maxEarlier: r.window.maxEarlier } : false,
-        contextTurns,
-        bands: r.bands,
-        appeals: r.appeals,
-        fallback: r.fallback,
-        mode: r.mode,
-        reasons: { window: r.windowReasons, hold: r.notes.held },
-      },
-    );
-  }
+export function createEngine(c: ChatContext) {
+  const { r, store, guard, links } = c;
 
   return {
     async open(input: OpenInput): Promise<OpenResult> {
@@ -200,23 +90,17 @@ export function createEngine(r: Resolved) {
         throw new ChaperoneError("invalid_input", "context must be JSON");
       }
 
-      const made = await store.createConversation({
-        id: newId("c"),
-        key,
-        deadlineInMs: durationMs,
-        context,
-        participants: people,
-      });
+      const made = await store.createConversation({ id: newId("c"), key, deadlineInMs: durationMs, context, participants: people });
       const at = await store.now();
       if (made.created) {
-        await event(EVENT.conversationOpened, made.conversation.id, null, { participants: made.participants.length });
+        await c.event(EVENT.conversationOpened, made.conversation.id, null, { participants: made.participants.length });
       }
       const ctx = await store.getConversation(made.conversation.id);
       if (!ctx) throw new ChaperoneError("store_error", "the conversation just opened can't be read back");
       return {
         created: made.created,
         conversation: conversationView(ctx),
-        links: await Promise.all(made.participants.map((p) => mint(p, made.conversation.deadline, at))),
+        links: await Promise.all(made.participants.map((p) => c.mint(p, made.conversation.deadline, at))),
       };
     },
 
@@ -224,7 +108,7 @@ export function createEngine(r: Resolved) {
     async link(participantId: string): Promise<LinkInfo | null> {
       const ctx = await store.getParticipantContext(participantId);
       if (!ctx) return null;
-      return mint(ctx.participant, ctx.conversation.deadline, ctx.now);
+      return c.mint(ctx.participant, ctx.conversation.deadline, ctx.now);
     },
 
     /** The participant a link's token stands for. */
@@ -243,12 +127,10 @@ export function createEngine(r: Resolved) {
       if (since && !Number.isFinite(since.getTime())) throw new ChaperoneError("invalid_input", "since must be a cursor from a view");
       const ctx = await store.getParticipantContext(participantId, { markRead: options.markRead !== false });
       if (!ctx) return null;
-      const list = await store.listMessages({
-        conversationId: ctx.conversation.id,
-        viewerId: participantId,
-        changedSince: since,
-        limit: r.pageSize,
-      });
+      const [list, votes] = await Promise.all([
+        store.listMessages({ conversationId: ctx.conversation.id, viewerId: participantId, changedSince: since, limit: r.pageSize }),
+        store.listVotes(ctx.conversation.id),
+      ]);
       const people = new Map(ctx.participants.map((p) => [p.id, p]));
       const messages: MessageView[] = [];
       const removed: string[] = [];
@@ -261,8 +143,7 @@ export function createEngine(r: Resolved) {
       const more = Boolean(since && list.hasMore && last);
       // More changes waiting: carry on from the last one read (a millisecond back, so ties at its instant come again;
       // the client merges by id). Otherwise from the store's clock, a few seconds back.
-      const cursor =
-        more && last ? new Date(last.updatedAt.getTime() - 1) : new Date(list.now.getTime() - CURSOR_OVERLAP_MS);
+      const cursor = more && last ? new Date(last.updatedAt.getTime() - 1) : new Date(list.now.getTime() - CURSOR_OVERLAP_MS);
       return {
         conversation: conversationView(ctx),
         you: participantView(ctx.participant),
@@ -273,6 +154,8 @@ export function createEngine(r: Resolved) {
         more,
         hasOlder: !since && list.hasMore,
         maxChars: r.maxChars,
+        outcomes: ctx.open ? outcomesFor(r, ctx.participant.role) : [],
+        voted: votes.filter((v) => v.participantId === participantId).map((v) => v.outcome),
       };
     },
 
@@ -292,11 +175,11 @@ export function createEngine(r: Resolved) {
         }
       }
       const appeal = options.appeal === true;
-      const verdict = await screen(conversationId, participantId, body, appeal);
+      const verdict = await c.screen(conversationId, participantId, body, { appeal });
       const meta = verdictMeta(verdict, appeal);
 
       if (verdict.action === "refuse" || verdict.action === "appealable") {
-        await event(EVENT.messageBlocked, conversationId, participantId, meta);
+        await c.event(EVENT.messageBlocked, conversationId, participantId, meta);
         return {
           ok: false,
           reason: "blocked",
@@ -320,7 +203,7 @@ export function createEngine(r: Resolved) {
       });
       if (!stored) return { ok: false, reason: "closed" };
       const type = held ? EVENT.messageHeld : verdict.observed ? EVENT.messageObserved : EVENT.messageSent;
-      await event(type, conversationId, participantId, { ...meta, messageId: stored.id });
+      await c.event(type, conversationId, participantId, { ...meta, messageId: stored.id });
       const people = new Map(ctx.participants.map((p) => [p.id, p]));
       return { ok: true, message: messageView(stored, participantId, people, r.notes), held };
     },

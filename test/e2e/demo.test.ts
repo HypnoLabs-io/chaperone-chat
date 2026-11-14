@@ -91,3 +91,101 @@ describe("the demo", () => {
     });
   });
 });
+
+describe("the demo with Jev and a moderator", () => {
+  /** Jev's network: answers by the judged message's text, 0.05 for anything not listed. */
+  const SCORES: Record<string, number> = { "Shall we swap over on the usual photo app?": 0.3, "Find me by my full name, the blue profile.": 0.9 };
+  const fakeJev = (async (_url: string, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    const latest = body.state.conversation.at(-1).text as string;
+    const answers = Object.fromEntries(Object.keys(body.questions).map((n) => [n, { type: "noul", noul: SCORES[latest] ?? 0.05 }]));
+    return new Response(JSON.stringify({ model: "jev-1.13.0", answers }));
+  }) as typeof fetch;
+  const events: { type: string; meta: Record<string, unknown> }[] = [];
+  let jevDemo: Demo;
+
+  beforeAll(async () => {
+    jevDemo = await startDemo({
+      port: 0,
+      moderatorKey: "mod-key",
+      chat: { jev: { apiKey: "k", fetch: fakeJev }, hooks: { onEvent: (e) => void events.push(e as never) } },
+    });
+  });
+  afterAll(() => jevDemo.close());
+
+  async function call(path: string, body: unknown, headers: Record<string, string> = {}) {
+    const res = await fetch(`${jevDemo.url}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, body: (await res.json()) as Record<string, any> };
+  }
+  const moderate = (body: unknown) => call("/api/moderate", body, { Authorization: "Bearer mod-key" });
+  async function opened() {
+    const o = await call("/api/open", {});
+    const [buyer, seller] = o.body.links.map((l: { url: string }) => decodeURIComponent(l.url.split("#t=")[1]!));
+    return { buyer: buyer as string, seller: seller as string, conversationId: o.body.conversationId as string };
+  }
+
+  it("refuses a high score outright, and lets a review-band score be appealed, held, and approved", async () => {
+    const { buyer, seller } = await opened();
+    expect(await call("/api/chat", { token: seller, step: "send", text: "Find me by my full name, the blue profile." })).toMatchObject({
+      status: 422,
+      body: { error: "blocked", appealable: false },
+    });
+    const text = "Shall we swap over on the usual photo app?";
+    expect(await call("/api/chat", { token: seller, step: "send", text })).toMatchObject({ status: 422, body: { appealable: true } });
+    expect(await call("/api/chat", { token: seller, step: "appeal", text })).toMatchObject({ status: 200, body: { held: true } });
+    expect((await call("/api/chat", { token: buyer, step: "load" })).body.thread.messages).toEqual([]);
+    const queue = await moderate({ step: "held" });
+    const held = queue.body.held.find((m: { body: string }) => m.body === text);
+    expect(held).toMatchObject({ holdReason: "appeal" });
+    expect(await moderate({ step: "approve", messageId: held.id })).toMatchObject({ status: 200 });
+    expect((await call("/api/chat", { token: buyer, step: "load" })).body.thread.messages.map((m: { body: string }) => m.body)).toEqual([text]);
+  });
+
+  it("takes a hidden message off the recipient's open thread at the next poll", async () => {
+    const { buyer, seller } = await opened();
+    const sent = await call("/api/chat", { token: seller, step: "send", text: "Here is something to take back." });
+    const open = await call("/api/chat", { token: buyer, step: "load" });
+    expect(open.body.thread.messages).toHaveLength(1);
+    expect(await moderate({ step: "hide", messageId: sent.body.message.id })).toMatchObject({ status: 200 });
+    const next = await call("/api/chat", { token: buyer, step: "load", since: open.body.thread.cursor });
+    expect(next.body.thread.removed).toEqual([sent.body.message.id]);
+  });
+
+  it("answers 409 to a send after the conversation closes", async () => {
+    const { buyer, seller } = await opened();
+    expect(await call("/api/chat", { token: buyer, step: "resolve", outcome: "end" })).toMatchObject({
+      status: 200,
+      body: { state: "closed", outcome: "end" },
+    });
+    expect(await call("/api/chat", { token: seller, step: "send", text: "Wait!" })).toMatchObject({ status: 409, body: { error: "closed" } });
+  });
+
+  it("keeps the moderation endpoint shut without the key", async () => {
+    expect(await call("/api/moderate", { step: "held" })).toMatchObject({ status: 401 });
+    expect((await fetch(`${jevDemo.url}/moderate`)).status).toBe(200);
+  });
+
+  it("records a spent Jev cap as unavailable and holds the message", async () => {
+    const capped = await startDemo({
+      port: 0,
+      chat: { jev: { apiKey: "k", fetch: fakeJev, dailyCap: 0 }, hooks: { onEvent: (e) => void events.push(e as never) } },
+    });
+    try {
+      const o = (await fetch(`${capped.url}/api/open`, { method: "POST" }).then((r) => r.json())) as { links: { url: string }[] };
+      const token = decodeURIComponent(o.links[0]!.url.split("#t=")[1]!);
+      const res = await fetch(`${capped.url}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, step: "send", text: "Tuesday works for me." }),
+      });
+      expect(await res.json()).toMatchObject({ ok: true, held: true });
+      expect(events.at(-1)).toMatchObject({ type: "message_held", meta: { judgeFailure: "unavailable" } });
+    } finally {
+      await capped.close();
+    }
+  });
+});

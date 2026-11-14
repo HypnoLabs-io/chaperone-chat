@@ -19,7 +19,12 @@
     "checkJs": false,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    // The demo and the tests import the package by name; inside the repo that is the source, as in vitest.config.ts.
+    "paths": {
+      "chaperone-chat": ["./src/index.ts"],
+      "chaperone-chat/*": ["./src/*/index.ts"]
+    }
   },
   "include": ["src", "test", "examples", "*.config.ts"],
   "exclude": ["node_modules", "dist", "src/client", "src/react", "test/client", "test/react"]

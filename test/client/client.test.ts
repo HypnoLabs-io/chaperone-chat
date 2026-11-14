@@ -213,3 +213,29 @@ describe("mergeMessages", () => {
     ]);
   });
 });
+
+describe("a message a moderator hides", () => {
+  it("drops off the other side's screen at the next poll, with no reload", async () => {
+    const a = createChatClient({ endpoint: "/api/chat", token: tokens[0], fetch: fakeFetch(createChatHandler(chat)) });
+    const b = createChatClient({ endpoint: "/api/chat", token: tokens[1], fetch: fakeFetch(createChatHandler(chat)) });
+    const sent = await a.send("Something to take back.");
+    await b.refresh(true);
+    expect(b.getState().messages.map((m) => m.body)).toEqual(["Something to take back."]);
+    expect(await chat.moderation.hide(sent.ok ? sent.message.id : "")).toMatchObject({ ok: true });
+    await b.refresh();
+    expect(b.getState().messages).toEqual([]);
+  });
+});
+
+describe("resolve", () => {
+  it("chooses an outcome and reloads the conversation", async () => {
+    const a = createChatClient({ endpoint: "/api/chat", token: tokens[0], fetch: fakeFetch(createChatHandler(chat)) });
+    await a.refresh(true);
+    expect(a.getState().outcomes).toEqual(["end"]);
+    expect(await a.resolve("end")).toEqual({ ok: true, state: "closed", outcome: "end" });
+    expect(a.getState().conversation).toMatchObject({ state: "closed", outcome: "end" });
+    expect(a.getState().outcomes).toEqual([]);
+    // Choosing it again, as a double click would, is the same close.
+    expect(await a.resolve("end")).toEqual({ ok: true, state: "closed", outcome: "end" });
+  });
+});

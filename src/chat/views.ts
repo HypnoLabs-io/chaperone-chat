@@ -56,6 +56,10 @@ export interface ThreadView {
   /** A first load: older messages exist than the ones returned. */
   hasOlder: boolean;
   maxChars: number;
+  /** The outcomes this participant may choose (`resolve`); empty once the conversation is no longer open. */
+  outcomes: string[];
+  /** The outcomes this participant has chosen. */
+  voted: string[];
 }
 
 export type SendRefusal =

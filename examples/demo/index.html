@@ -64,6 +64,7 @@
       <p id="error" role="alert"></p>
       <button id="appeal" class="quiet" type="button" hidden>It isn't a way to get in touch: send it for a review</button>
     </form>
+    <div class="row" id="outcomes"></div>
     <p><button id="again" class="quiet" type="button">Start another conversation</button></p>
   </section>
 
@@ -137,9 +138,28 @@
       show("chat");
       const others = state.participants.filter((p) => p.id !== state.you.id).map((p) => p.alias).join(", ");
       $("who").textContent = `You are the ${state.you.alias}, talking with the ${others}`;
-      $("left").textContent = state.conversation.open ? timeLeft(state.conversation.msLeft) : "This conversation has closed";
+      $("left").textContent = state.conversation.open
+        ? timeLeft(state.conversation.msLeft)
+        : state.conversation.state === "closed" ? "This conversation has closed" : "Closing…";
       $("text").maxLength = state.maxChars;
       $("send").disabled = !state.conversation.open;
+      $("outcomes").replaceChildren(
+        ...state.outcomes.map((outcome) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "quiet";
+          b.textContent = outcome === "end" ? "End the conversation" : outcome;
+          b.disabled = state.voted.includes(outcome);
+          b.onclick = async () => {
+            if (!confirm(outcome === "end" ? "End this conversation for everyone?" : `Choose "${outcome}"?`)) return;
+            const result = await client.resolve(outcome);
+            $("error").textContent = result.ok
+              ? result.state === "waiting" ? "Waiting for the others to choose it too." : ""
+              : result.message ?? errorText(result.error);
+          };
+          return b;
+        }),
+      );
       $("messages").replaceChildren(
         ...state.messages.map((m) => {
           const li = document.createElement("li");

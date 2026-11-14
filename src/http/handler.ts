@@ -5,14 +5,15 @@
  *   { token, step: "load", since? }       → 200 { ok, thread }
  *   { token, step: "send", text }         → 200 { ok, message, held } | 422 blocked { message, kind, appealable }
  *   { token, step: "appeal", text }       → the same, sending a refused message again for review
+ *   { token, step: "resolve", outcome }   → 200 { ok, state, outcome, waitingFor? }: choose how it ends
  *
  * The signed link in the body is the only auth: there are no cookies, so a cross-site form can't act for anyone. The
  * token travels in the body, never in a URL, and the handler acts on POST only (link scanners fetch every URL they
  * see). Responses are `no-store`.
  *
- * Errors: 400 invalid_body / empty / too_long, 401 invalid_link / link_expired, 404 not_found, 405, 409 closed,
- * 413 body_too_large, 415, 422 blocked, 429 rate_limited (with Retry-After) / too_many (the daily message limit),
- * 500 server_error.
+ * Errors: 400 invalid_body / empty / too_long / unknown_outcome, 401 invalid_link / link_expired, 403 not_allowed,
+ * 404 not_found, 405, 409 closed / refused, 413 body_too_large, 415, 422 blocked, 429 rate_limited (with
+ * Retry-After) / too_many (the daily message limit), 500 server_error.
  */
 import type { Chat } from "../index";
 import { memoryRateLimiter, type RateLimiter } from "./rate-limit";
@@ -35,8 +36,8 @@ export interface HandlerOptions {
   maxBodyBytes?: number;
 }
 
-type Step = "load" | "send" | "appeal";
-const STEPS: readonly Step[] = ["load", "send", "appeal"];
+type Step = "load" | "send" | "appeal" | "resolve";
+const STEPS: readonly Step[] = ["load", "send", "appeal", "resolve"];
 const MAX_TEXT_CHARS = 20_000;
 
 const SEND_STATUS: Record<string, number> = {
@@ -48,11 +49,20 @@ const SEND_STATUS: Record<string, number> = {
   blocked: 422,
 };
 
+const RESOLVE_STATUS: Record<string, number> = {
+  not_found: 404,
+  closed: 409,
+  unknown_outcome: 400,
+  not_allowed: 403,
+  refused: 409,
+};
+
 interface Body {
   token: string;
   step: Step;
   since: string | null;
   text: string;
+  outcome: string;
 }
 
 /** The body's fields, checked by hand: null when anything is off. */
@@ -72,7 +82,12 @@ function parseBody(value: unknown): Body | null {
     if (typeof v.text !== "string" || v.text.length > MAX_TEXT_CHARS) return null;
     text = v.text;
   }
-  return { token: v.token, step, since, text };
+  let outcome = "";
+  if (step === "resolve") {
+    if (typeof v.outcome !== "string" || v.outcome.length === 0 || v.outcome.length > 32) return null;
+    outcome = v.outcome;
+  }
+  return { token: v.token, step, since, text, outcome };
 }
 
 export function createChatHandler(chat: Chat, options: HandlerOptions = {}): (req: Request) => Promise<Response> {
@@ -114,6 +129,12 @@ export function createChatHandler(chat: Chat, options: HandlerOptions = {}): (re
       if (body.step === "load") {
         const thread = await chat.load(participantId, { since: body.since });
         return thread ? json({ ok: true, thread }) : failure("not_found", 404);
+      }
+      if (body.step === "resolve") {
+        const resolved = await chat.resolve(participantId, body.outcome);
+        if (resolved.ok) return json(resolved);
+        const { reason, ...rest } = resolved;
+        return failure(reason, RESOLVE_STATUS[reason] ?? 409, rest);
       }
       const sent = await chat.send(participantId, body.text, { appeal: body.step === "appeal" });
       if (sent.ok) return json({ ok: true, message: sent.message, held: sent.held });

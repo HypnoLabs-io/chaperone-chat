@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>chaperone-chat moderation</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #dddad3;
+    --accent: #2f6f5e; --accent-ink: #ffffff; --warn: #9a3b2a;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --card: #1f1f1d; --ink: #ecebe7; --muted: #a3a19b; --line: #34332f;
+      --accent: #6fb39c; --accent-ink: #10201b; --warn: #e48b77; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 16px; }
+  h1 { font-size: 1.3rem; margin: 0; }
+  h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  .muted { color: var(--muted); font-size: 0.85rem; }
+  input { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; width: 100%; }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 6px 12px; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  button.warn { background: var(--warn); }
+  button.quiet { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  li { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 6px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  #error { color: var(--warn); min-height: 1.5em; margin: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Moderation</h1>
+  <section class="card">
+    <label for="key" class="muted">Moderator key (printed when the demo server started)</label>
+    <div class="row"><input id="key" type="password" autocomplete="off"><button id="save" type="button">Use</button></div>
+  </section>
+  <p id="error" role="alert"></p>
+  <section class="card">
+    <div class="row" style="justify-content: space-between"><h2>Held messages</h2><button id="refresh" class="quiet" type="button">Refresh</button></div>
+    <ul id="held"></ul>
+  </section>
+  <section class="card">
+    <h2>A conversation</h2>
+    <div class="row"><input id="conversation" placeholder="Conversation id (c_…)"><button id="load" type="button">Read</button></div>
+    <p id="state" class="muted"></p>
+    <ul id="thread"></ul>
+  </section>
+</main>
+<script type="module">
+  const $ = (id) => document.getElementById(id);
+  const STORAGE = "chaperone-chat:moderator-key";
+  try { $("key").value = sessionStorage.getItem(STORAGE) ?? ""; } catch {}
+
+  async function call(body) {
+    const res = await fetch("/api/moderate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${$("key").value.trim()}` },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    $("error").textContent = data.ok ? "" : `Couldn't do that: ${data.error ?? res.status}`;
+    return data;
+  }
+
+  function item(m, buttons) {
+    const li = document.createElement("li");
+    const meta = document.createElement("div");
+    meta.className = "muted";
+    const why = m.status === "held" ? `held (${m.holdReason})` : m.status;
+    const score = m.score === null ? "" : `, score ${m.score}`;
+    meta.textContent = `${m.alias} (${m.role}) in ${m.conversationId}: ${why}${score}, checked by ${m.checkedBy}`;
+    const body = document.createElement("div");
+    body.className = "body";
+    body.textContent = m.body ?? "(cleared)";
+    const row = document.createElement("div");
+    row.className = "row";
+    for (const [label, step, cls] of buttons) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      if (cls) b.className = cls;
+      b.onclick = async () => {
+        await call({ step, messageId: m.id });
+        await refresh();
+        if ($("conversation").value.trim()) await readThread();
+      };
+      row.append(b);
+    }
+    li.append(meta, body, row);
+    return li;
+  }
+
+  async function refresh() {
+    const data = await call({ step: "held" });
+    if (!data.ok) return;
+    $("held").replaceChildren(
+      ...(data.held.length
+        ? data.held.map((m) => item(m, [["Approve", "approve"], ["Refuse", "refuse", "warn"], ...(m.holdReason === "unchecked" ? [["Check again", "retry", "quiet"]] : [])]))
+        : [Object.assign(document.createElement("li"), { textContent: "Nothing is waiting." })]),
+    );
+  }
+
+  async function readThread() {
+    const data = await call({ step: "thread", conversationId: $("conversation").value.trim() });
+    if (!data.ok) return;
+    const c = data.thread.conversation;
+    $("state").textContent = `${c.state}${c.outcome ? ` (${c.outcome})` : ""}; ${data.thread.participants.map((p) => `${p.alias} (${p.role})`).join(", ")}`;
+    $("thread").replaceChildren(...data.thread.messages.map((m) => item(m, m.status === "sent" ? [["Hide", "hide", "warn"]] : m.status === "held" ? [["Approve", "approve"], ["Refuse", "refuse", "warn"]] : [])));
+  }
+
+  $("save").onclick = () => {
+    try { sessionStorage.setItem(STORAGE, $("key").value.trim()); } catch {}
+    void refresh();
+  };
+  $("refresh").onclick = () => void refresh();
+  $("load").onclick = () => void readThread();
+  if ($("key").value) void refresh();
+</script>
+</body>
+</html>

@@ -7,15 +7,45 @@
  *   // send each person `${yourChatPage}#t=${link.token}`; serve createChatHandler(chat) from one route.
  */
 import { resolveConfig, type ChatConfig } from "./chat/config";
+import { createContext } from "./chat/context";
 import { createEngine, type Engine } from "./chat/engine";
+import { createLifecycle, type Lifecycle } from "./chat/lifecycle";
+import { createModeration, type Moderation } from "./chat/moderate";
 
-export type Chat = Engine;
-
-export function createChat(config: ChatConfig): Chat {
-  return createEngine(resolveConfig(config));
+export interface Chat extends Engine, Pick<Lifecycle, "resolve" | "close"> {
+  /** The held queue, whole conversations, and approve, refuse, hide and retry on one message. */
+  readonly moderation: Moderation;
+  /** For the sweep (`sweep()`): close what is past its deadline, and finish closes whose hook failed. */
+  readonly lifecycle: Lifecycle;
 }
 
-export { DEFAULT_NOTES, type ChatConfig, type LinkOptions, type MessageOptions, type Notes } from "./chat/config";
+export function createChat(config: ChatConfig): Chat {
+  const context = createContext(resolveConfig(config));
+  const lifecycle = createLifecycle(context);
+  return {
+    ...createEngine(context),
+    resolve: lifecycle.resolve,
+    close: lifecycle.close,
+    lifecycle,
+    moderation: createModeration(context),
+  };
+}
+
+export {
+  DEFAULT_NOTES,
+  DEFAULT_OUTCOMES,
+  type ChatConfig,
+  type ChatEvent,
+  type CloseContext,
+  type Hooks,
+  type JevOptions,
+  type LinkOptions,
+  type MessageOptions,
+  type Notes,
+  type OutcomeRule,
+} from "./chat/config";
+export type { CloseResult, ResolveResult } from "./chat/lifecycle";
+export type { ModerationResult, ModeratorMessage, ModeratorThread, RetryOutcome } from "./chat/moderate";
 export {
   CURSOR_OVERLAP_MS,
   LINK_KIND,

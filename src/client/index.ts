@@ -38,6 +38,9 @@ export interface ClientState {
   /** A first load found older messages than it returned. */
   hasOlder: boolean;
   maxChars: number | null;
+  /** The outcomes this participant may choose, and the ones they chose. */
+  outcomes: string[];
+  voted: string[];
   /** Why the conversation couldn't be loaded: an error code (`invalid_link`, `link_expired`, `not_found`, `network`…). */
   error: string | null;
 }
@@ -67,8 +70,14 @@ export interface ChatClient {
   send(text: string): Promise<SendOutcome>;
   /** Send a refused message again, for review. */
   appeal(text: string): Promise<SendOutcome>;
+  /** Choose how the conversation ends (one of the view's `outcomes`). */
+  resolve(outcome: string): Promise<ResolveOutcome>;
   stop(): void;
 }
+
+export type ResolveOutcome =
+  | { ok: true; state: "closed" | "closing" | "waiting"; outcome: string; waitingFor?: ParticipantView[] }
+  | { ok: false; error: string; message?: string };
 
 /** Plain-English words for each error code, for a page that has none of its own. */
 export const ERROR_TEXT: Readonly<Record<string, string>> = {
@@ -79,6 +88,9 @@ export const ERROR_TEXT: Readonly<Record<string, string>> = {
   empty: "Write a message first.",
   too_long: "That message is too long.",
   too_many: "That's a lot of messages for one day. Please try again tomorrow.",
+  not_allowed: "That choice isn't yours to make here.",
+  unknown_outcome: "That choice isn't available.",
+  refused: "That couldn't be done right now.",
   rate_limited: "Slow down a little, then try again.",
   network: "We couldn't reach the server. Check your connection and try again.",
   server_error: "Something went wrong on our side. Please try again.",
@@ -131,6 +143,8 @@ const EMPTY: ClientState = {
   messages: [],
   hasOlder: false,
   maxChars: null,
+  outcomes: [],
+  voted: [],
   error: null,
 };
 
@@ -172,6 +186,8 @@ export function createChatClient(options: ClientOptions): ChatClient {
       you: thread.you,
       participants: thread.participants,
       maxChars: thread.maxChars,
+      outcomes: thread.outcomes,
+      voted: thread.voted,
       hasOlder: full ? thread.hasOlder : state.hasOlder,
       messages: full ? mergeMessages([], thread.messages) : mergeMessages(state.messages, thread.messages, thread.removed),
     });
@@ -261,6 +277,20 @@ export function createChatClient(options: ClientOptions): ChatClient {
     refresh,
     send: (text) => sendStep("send", text),
     appeal: (text) => sendStep("appeal", text),
+    async resolve(outcome) {
+      if (!token) return { ok: false, error: "invalid_link" };
+      const data = await post({ step: "resolve", outcome });
+      await refresh(true);
+      if (data.ok) {
+        return {
+          ok: true,
+          state: data.state as "closed" | "closing" | "waiting",
+          outcome: String(data.outcome),
+          ...(Array.isArray(data.waitingFor) ? { waitingFor: data.waitingFor as ParticipantView[] } : {}),
+        };
+      }
+      return { ok: false, error: String(data.error ?? "server_error"), ...(typeof data.message === "string" ? { message: data.message } : {}) };
+    },
     stop,
   };
 }

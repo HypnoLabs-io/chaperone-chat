@@ -11,7 +11,7 @@ import type { ContactKind } from "../guard/types";
 import { DEFAULT_WINDOW, WINDOW_REASONS, type WindowKind } from "../guard/window";
 import { createJevClient } from "../jev/client";
 import { createLinks, type Links } from "../links";
-import type { Store } from "../store/types";
+import type { Json, Store } from "../store/types";
 
 const DAY = 86_400_000;
 
@@ -51,6 +51,45 @@ export interface JevOptions {
   fetch?: typeof fetch;
 }
 
+/** Who may decide an outcome, and whether one vote closes or every one of them must agree. */
+export interface OutcomeRule {
+  /** The roles that may vote for it, or "*" for everyone. */
+  by: readonly string[] | "*";
+  /** `any` (default): one vote closes. `all`: every participant who may vote must, a double opt-in. */
+  requires?: "any" | "all";
+}
+
+/** What a host's `beforeClose` hook is told. Server-side: it holds every participant's `externalRef` and the context. */
+export interface CloseContext {
+  conversation: { id: string; key: string | null; context: Json; deadline: Date | null; createdAt: Date };
+  outcome: string;
+  /** A participant's id, "system" (the deadline passed) or "moderator". */
+  by: string;
+  participants: { id: string; role: string; alias: string; externalRef: string | null }[];
+  votes: { participantId: string; outcome: string }[];
+}
+
+/** An event as `onEvent` receives it: ids and numbers, never message text. */
+export interface ChatEvent {
+  id: string;
+  type: string;
+  conversationId: string | null;
+  participantId: string | null;
+  meta: Json;
+  at: Date;
+}
+
+export interface Hooks {
+  /**
+   * Runs once a close is claimed, before it commits (where a host charges, releases, or swaps contact details).
+   * Return or resolve false, or `{ refuse: "why" }`, to refuse it: the conversation opens again. Throw and it stays
+   * closing: the sweep calls the hook again later. Must be safe to run more than once for one close.
+   */
+  beforeClose?(context: CloseContext): void | boolean | { refuse: string } | Promise<void | boolean | { refuse: string }>;
+  /** Every event, after it is recorded. Errors are swallowed: the action has happened. */
+  onEvent?(event: ChatEvent): void | Promise<void>;
+}
+
 export interface ChatConfig {
   /** Signs the participants' links. At least 32 characters; a list rotates (the first signs, any verifies). */
   secret: string | readonly string[];
@@ -82,7 +121,14 @@ export interface ChatConfig {
   /** The sentence a sender sees, by kind, and for the split-message pass. */
   reasons?: Partial<Record<ContactKind, string>> & { window?: Partial<Record<WindowKind, string>> };
   notes?: Partial<Notes>;
+  /** How a conversation can end. Default `{ end: { by: "*" } }`: anyone may end it. */
+  outcomes?: Readonly<Record<string, OutcomeRule>>;
+  /** The outcome a conversation closes with when its deadline passes. Default "expired". */
+  expiredOutcome?: string;
+  hooks?: Hooks;
 }
+
+export const DEFAULT_OUTCOMES: Readonly<Record<string, OutcomeRule>> = { end: { by: "*", requires: "any" } };
 
 export const DEFAULT_NOTES: Notes = {
   held: "Waiting for a quick check before it's sent.",
@@ -111,6 +157,25 @@ export interface Resolved {
   window: { maxEarlier: number; windowMs: number } | null;
   windowReasons: Record<WindowKind, string>;
   notes: Notes;
+  outcomes: Readonly<Record<string, Required<OutcomeRule>>>;
+  expiredOutcome: string;
+  hooks: Hooks;
+}
+
+const OUTCOME = /^[a-z][a-z0-9_-]{0,31}$/;
+
+function resolveOutcomes(outcomes: Readonly<Record<string, OutcomeRule>> | undefined): Record<string, Required<OutcomeRule>> {
+  const out: Record<string, Required<OutcomeRule>> = {};
+  for (const [name, rule] of Object.entries(outcomes ?? DEFAULT_OUTCOMES)) {
+    if (!OUTCOME.test(name)) throw new ChaperoneError("invalid_option", `outcome "${name}": lowercase, 1-32 characters`);
+    const by = rule?.by;
+    if (by !== "*" && !(Array.isArray(by) && by.length > 0 && by.every((r) => typeof r === "string" && r))) {
+      throw new ChaperoneError("invalid_option", `outcome "${name}": by is "*" or a list of roles`);
+    }
+    out[name] = { by, requires: oneOf<"any" | "all">(rule.requires, ["any", "all"], "any", `outcomes.${name}.requires`) };
+  }
+  if (Object.keys(out).length === 0) throw new ChaperoneError("invalid_option", "outcomes needs at least one");
+  return out;
 }
 
 function nonNegative(value: number | null | undefined, fallback: number | null, name: string): number | null {
@@ -143,6 +208,9 @@ export function resolveConfig(config: ChatConfig): Resolved {
   const ids = policies.map((p) => p.id);
   if (new Set(ids).size !== ids.length) throw new ChaperoneError("invalid_option", "two policies share an id");
 
+  const outcomes = resolveOutcomes(config.outcomes);
+  const expiredOutcome = config.expiredOutcome ?? "expired";
+  if (!OUTCOME.test(expiredOutcome)) throw new ChaperoneError("invalid_option", "expiredOutcome: lowercase, 1-32 characters");
   const { window: windowReasons, ...kindReasons } = config.reasons ?? {};
   const window =
     config.window === false
@@ -196,5 +264,8 @@ export function resolveConfig(config: ChatConfig): Resolved {
     window,
     windowReasons: { ...WINDOW_REASONS, ...windowReasons },
     notes: { ...DEFAULT_NOTES, ...config.notes },
+    outcomes,
+    expiredOutcome,
+    hooks: config.hooks ?? {},
   };
 }
