@@ -160,8 +160,125 @@ export interface Store {
   }): Promise<{ turns: { participantId: string; body: string; sentAt: Date }[]; now: Date }>;
   /** Messages the participant stored, and sends refused, within `windowMs`: the daily limit's count. */
   countActivity(input: { participantId: string; windowMs: number }): Promise<number>;
+  /** One message with whether its conversation is open (open and before its deadline). */
+  getMessage(id: string): Promise<(MessageRow & { conversationOpen: boolean }) | null>;
+  /** Every message of a conversation in every status, oldest first (a moderator's view). */
+  listThread(input: { conversationId: string; limit: number }): Promise<MessageRow[]>;
+  /**
+   * Moves one message from a status (and, when given, a hold reason) to another, stamping `updatedAt`: one
+   * conditional write, so of two racing moves only one lands. Null when it wasn't in `from` (or, with
+   * `requireOpen`, its conversation wasn't open).
+   */
+  transitionMessage(input: TransitionInput): Promise<MessageRow | null>;
+  /** Held messages, oldest first. */
+  listHeld(filter: {
+    holdReason?: HoldReason | null;
+    /** Only in conversations still open and before their deadline. */
+    onlyOpen?: boolean;
+    conversationId?: string | null;
+    limit: number;
+  }): Promise<MessageRow[]>;
+  /** Deletes the messages of conversations closed more than `olderThanMs` ago, up to `limit`; how many went. */
+  deleteMessagesAfterClose(input: { olderThanMs: number; limit: number }): Promise<number>;
+
+  // --- lifecycle ---
+  /** Conversations a host's user takes part in (`externalRef`), and/or in a state, newest first. */
+  listConversations(filter: {
+    externalRef?: string | null;
+    state?: ConversationState | null;
+    limit: number;
+  }): Promise<ConversationWithParticipants[]>;
+  /** Deletes a conversation with its participants, messages and votes (events stay, holding no text). */
+  deleteConversation(id: string): Promise<boolean>;
+  /** Records a participant's vote for an outcome, only while the conversation is open: false when not recorded. */
+  castVote(input: { conversationId: string; participantId: string; outcome: string }): Promise<boolean>;
+  listVotes(conversationId: string): Promise<{ participantId: string; outcome: string; createdAt: Date }[]>;
+  /**
+   * The first step of closing: open → closing with the outcome and who closed it, only from open (and, with
+   * `requireBeforeDeadline`, before the deadline). Of racing claims exactly one wins; the row, or null.
+   */
+  claimClose(input: {
+    conversationId: string;
+    outcome: string;
+    by: string;
+    requireBeforeDeadline: boolean;
+  }): Promise<ConversationRow | null>;
+  /** closing → closed, only for that outcome. */
+  finishClose(input: { conversationId: string; outcome: string }): Promise<ConversationRow | null>;
+  /** closing → open again (the host refused the close), only for that outcome. */
+  revertClose(input: { conversationId: string; outcome: string }): Promise<boolean>;
+  /** Open conversations past their deadline, the longest past first. */
+  findExpired(limit: number): Promise<string[]>;
+  /** Conversations left closing for longer than `olderThanMs` (a close whose host hook failed), oldest first. */
+  findStaleClosing(input: { olderThanMs: number; limit: number }): Promise<{ id: string; outcome: string; by: string }[]>;
+
+  // --- notices ---
+  /** Participants due a notice of `kind`, by the rules in `NoticeParams`. */
+  findNoticeTargets(
+    kind: NoticeKind,
+    params: NoticeParams & { limit: number },
+  ): Promise<{ participantId: string; conversationId: string }[]>;
+  /** Stamps the participant's notice of `kind` when it is still due: of racing claims exactly one wins. */
+  claimNotice(kind: NoticeKind, participantId: string, params: NoticeParams): Promise<boolean>;
 
   // --- events ---
   /** False when `dedupeKey` was already used: a one-shot claim. */
   appendEvent(event: EventInput & { dedupeKey?: string | null }): Promise<boolean>;
+  /**
+   * Appends the event only while fewer than `max` events of `cap.type` (for `cap.participantId`, when given) were
+   * written within `windowMs`: the count and the write are one statement. Under concurrency a cap may overshoot by
+   * at most the number of racing claims.
+   */
+  claimEventUnderCap(
+    event: EventInput,
+    cap: { type: string; participantId?: string | null; max: number; windowMs: number },
+  ): Promise<boolean>;
+  /** Merges keys into an event's meta. */
+  setEventMeta(id: string, meta: { [key: string]: Json }): Promise<void>;
+  /**
+   * Jev's health from its call events (`type`): calls within `windowMs`, and of the last `streak` calls older than
+   * `settleMs` (a call in flight doesn't count), how many there are and how many never recorded a score (`meta.p`).
+   */
+  judgeHealth(input: { type: string; windowMs: number; streak: number; settleMs: number }): Promise<{
+    calls: number;
+    recent: number;
+    failed: number;
+  }>;
+  /** Deletes events older than `olderThanMs`, up to `limit`; how many went. */
+  pruneEvents(input: { olderThanMs: number; limit: number }): Promise<number>;
+}
+
+export interface TransitionInput {
+  id: string;
+  /** `holdReason` left out: any. */
+  from: { status: MessageStatus; holdReason?: HoldReason | null };
+  to: {
+    status: MessageStatus;
+    /** Left out: kept. */
+    holdReason?: HoldReason | null;
+    /** Delivered now: `sentAt` set to the store's clock. */
+    stampSent?: boolean;
+    /** The body cleared. */
+    clearBody?: boolean;
+    score?: number | null;
+    policy?: string | null;
+    checkedBy?: string;
+  };
+  requireOpen?: boolean;
+}
+
+/** `message`: new messages a participant hasn't read. `reminder`: the deadline is near. `closed`: it has closed. */
+export type NoticeKind = "message" | "reminder" | "closed";
+
+export interface NoticeParams {
+  /** `message`: at most one notice per participant in this long. */
+  everyMs: number;
+  /** `message`: a message this new isn't noticed yet (a page that's open reads it within seconds). */
+  graceMs: number;
+  /** `reminder`: once the deadline is this close… */
+  reminderBeforeMs: number;
+  /** …and not with less than this left. */
+  reminderMinLeftMs: number;
+  /** `closed`: only conversations closed this recently. */
+  closedWithinMs: number;
 }
