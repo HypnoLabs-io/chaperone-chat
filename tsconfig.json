@@ -1,0 +1,26 @@
+{
+  // The server side: everything but the browser client and the React component. No DOM types, so server code
+  // can't reach for `window` or `document`. The runtime-neutral entries also stay off `process` and `node:`
+  // imports; test/runtime-neutral.test.ts holds them to it.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "checkJs": false,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src", "test", "examples", "*.config.ts"],
+  "exclude": ["node_modules", "dist", "src/client", "src/react", "test/client", "test/react"]
+}

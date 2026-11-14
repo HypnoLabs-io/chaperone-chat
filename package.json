@@ -1,0 +1,157 @@
+{
+  "name": "chaperone-chat",
+  "version": "0.1.0",
+  "description": "An anonymous chat that keeps contact details out of every message: deterministic rules first, then TypeSafe's Jev reads what they pass.",
+  "keywords": [
+    "chat",
+    "anonymous",
+    "moderation",
+    "contact-details",
+    "pii",
+    "marketplace",
+    "trust-and-safety",
+    "jev",
+    "typesafe"
+  ],
+  "license": "MIT",
+  "author": "Hypno Labs LLC",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./guard": {
+      "import": {
+        "types": "./dist/guard/index.d.ts",
+        "default": "./dist/guard/index.js"
+      },
+      "require": {
+        "types": "./dist/guard/index.d.cts",
+        "default": "./dist/guard/index.cjs"
+      }
+    },
+    "./jev": {
+      "import": {
+        "types": "./dist/jev/index.d.ts",
+        "default": "./dist/jev/index.js"
+      },
+      "require": {
+        "types": "./dist/jev/index.d.cts",
+        "default": "./dist/jev/index.cjs"
+      }
+    },
+    "./links": {
+      "import": {
+        "types": "./dist/links/index.d.ts",
+        "default": "./dist/links/index.js"
+      },
+      "require": {
+        "types": "./dist/links/index.d.cts",
+        "default": "./dist/links/index.cjs"
+      }
+    },
+    "./http": {
+      "import": {
+        "types": "./dist/http/index.d.ts",
+        "default": "./dist/http/index.js"
+      },
+      "require": {
+        "types": "./dist/http/index.d.cts",
+        "default": "./dist/http/index.cjs"
+      }
+    },
+    "./postgres": {
+      "import": {
+        "types": "./dist/postgres/index.d.ts",
+        "default": "./dist/postgres/index.js"
+      },
+      "require": {
+        "types": "./dist/postgres/index.d.cts",
+        "default": "./dist/postgres/index.cjs"
+      }
+    },
+    "./client": {
+      "import": {
+        "types": "./dist/client/index.d.ts",
+        "default": "./dist/client/index.js"
+      },
+      "require": {
+        "types": "./dist/client/index.d.cts",
+        "default": "./dist/client/index.cjs"
+      }
+    },
+    "./react": {
+      "import": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      },
+      "require": {
+        "types": "./dist/react/index.d.cts",
+        "default": "./dist/react/index.cjs"
+      }
+    },
+    "./react/styles.css": "./dist/react/styles.css",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "chaperone-chat": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "corpus",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.browser.json",
+    "test": "vitest run && bash scripts/check-leaks.sh",
+    "test:watch": "vitest",
+    "test:pg": "vitest run --config vitest.pg.config.ts",
+    "lint:package": "publint && attw --pack . --profile node16 --exclude-entrypoints ./react/styles.css",
+    "demo": "node examples/demo/server.mjs",
+    "prepare": "npm run build"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@electric-sql/pglite": "^0.5.16",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "fast-check": "^4.10.2",
+    "happy-dom": "^21.0.4",
+    "pg": "^8.23.1",
+    "publint": "^0.3.25",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsup": "^9.0.0",
+    "typescript": "~5.9.3",
+    "vitest": "^5.1.0"
+  }
+}

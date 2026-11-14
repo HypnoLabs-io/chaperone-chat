@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.tgz
+.env
+.env.local
+.DS_Store
+
+# The leak check's word lists stay local (scripts/check-leaks.sh).
+.leak-patterns
+.leak-review

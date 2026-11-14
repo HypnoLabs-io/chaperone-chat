@@ -1,0 +1,10 @@
+{
+  // The browser side: the framework-free client and the React component, with the DOM.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx"
+  },
+  "include": ["src/client", "src/react", "test/client", "test/react"],
+  "exclude": ["node_modules", "dist"]
+}
