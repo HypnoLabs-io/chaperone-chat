@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>chaperone-chat demo</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #dddad3;
+    --mine: #e4efe9; --theirs: #efede8; --accent: #2f6f5e; --accent-ink: #ffffff; --warn: #9a3b2a;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --card: #1f1f1d; --ink: #ecebe7; --muted: #a3a19b; --line: #34332f;
+      --mine: #23372f; --theirs: #2a2927; --accent: #6fb39c; --accent-ink: #10201b; --warn: #e48b77; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.4rem; margin: 0 0 8px; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+  button { font: inherit; border: 0; border-radius: 10px; padding: 10px 16px; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  button.quiet { background: transparent; color: var(--accent); padding: 6px 0; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  #links { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
+  #links a { color: var(--accent); word-break: break-all; }
+  .bar { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 12px; }
+  #messages { list-style: none; padding: 0; margin: 0 0 16px; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
+  #messages li { max-width: 85%; padding: 8px 12px; border-radius: 14px; background: var(--theirs); align-self: flex-start; }
+  #messages li.mine { background: var(--mine); align-self: flex-end; }
+  #messages li.pending { opacity: 0.75; }
+  #messages .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  #messages .meta, #messages .note { font-size: 0.75rem; color: var(--muted); }
+  textarea { width: 100%; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; resize: vertical; }
+  .row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 12px; }
+  #error { color: var(--warn); margin-top: 8px; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<main>
+  <section id="start" class="card" hidden>
+    <h1>An anonymous chat that keeps contact details out</h1>
+    <p class="muted">Start a conversation between a buyer and a seller, then open each link in its own tab. Try sending a phone number, an email, or a number split across a few messages.</p>
+    <button id="open" type="button">Start a conversation</button>
+    <ul id="links"></ul>
+  </section>
+
+  <section id="chat" class="card" hidden>
+    <div class="bar">
+      <strong id="who"></strong>
+      <span id="left" class="muted"></span>
+    </div>
+    <ol id="messages" aria-live="polite"></ol>
+    <form id="composer">
+      <label for="text" class="muted">Message</label>
+      <textarea id="text" rows="3"></textarea>
+      <div class="row">
+        <span id="count" class="muted"></span>
+        <button id="send" type="submit">Send</button>
+      </div>
+      <p id="error" role="alert"></p>
+      <button id="appeal" class="quiet" type="button" hidden>It isn't a way to get in touch: send it for a review</button>
+    </form>
+    <p><button id="again" class="quiet" type="button">Start another conversation</button></p>
+  </section>
+
+  <section id="failed" class="card" hidden>
+    <p id="failed-text"></p>
+    <button id="restart" type="button">Start a new conversation</button>
+  </section>
+</main>
+
+<script type="module">
+  import { createChatClient, errorText, readFragmentToken } from "/client.js";
+
+  const $ = (id) => document.getElementById(id);
+  const show = (id) => ["start", "chat", "failed"].forEach((s) => ($(s).hidden = s !== id));
+  const STORAGE = "chaperone-chat:token";
+
+  function restart() {
+    try { sessionStorage.removeItem(STORAGE); } catch {}
+    location.hash = "";
+    location.reload();
+  }
+  $("again").onclick = restart;
+  $("restart").onclick = restart;
+
+  $("open").onclick = async () => {
+    $("open").disabled = true;
+    const res = await fetch("/api/open", { method: "POST" });
+    const data = await res.json();
+    $("links").replaceChildren(
+      ...data.links.map((l) => {
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = l.url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = `Open the ${l.alias}'s side`;
+        li.append(a);
+        return li;
+      }),
+    );
+  };
+
+  // A link pasted into a tab already on this page changes only the fragment, which doesn't reload the page.
+  window.addEventListener("hashchange", () => {
+    if (/[#&]t=/.test(location.hash)) location.reload();
+  });
+
+  const token = readFragmentToken(STORAGE);
+  if (!token) show("start");
+  else startChat(token);
+
+  function timeLeft(ms) {
+    if (ms === null) return "";
+    if (ms <= 0) return "Time's up";
+    const hours = ms / 3_600_000;
+    if (hours >= 48) return `${Math.ceil(hours / 24)} days left`;
+    if (hours >= 1) return `${Math.floor(hours)} hours left`;
+    return "Less than an hour left";
+  }
+
+  function startChat(token) {
+    const client = createChatClient({ endpoint: "/api/chat", token });
+    let lastText = "";
+
+    client.subscribe((state) => {
+      if (state.status === "error") {
+        $("failed-text").textContent = errorText(state.error);
+        return show("failed");
+      }
+      if (state.status !== "ready") return;
+      show("chat");
+      const others = state.participants.filter((p) => p.id !== state.you.id).map((p) => p.alias).join(", ");
+      $("who").textContent = `You are the ${state.you.alias}, talking with the ${others}`;
+      $("left").textContent = state.conversation.open ? timeLeft(state.conversation.msLeft) : "This conversation has closed";
+      $("text").maxLength = state.maxChars;
+      $("send").disabled = !state.conversation.open;
+      $("messages").replaceChildren(
+        ...state.messages.map((m) => {
+          const li = document.createElement("li");
+          li.className = `${m.mine ? "mine" : ""} ${m.status === "sent" ? "" : "pending"}`;
+          if (m.body) {
+            const body = document.createElement("div");
+            body.className = "body";
+            body.textContent = m.body;
+            li.append(body);
+          }
+          if (m.note) {
+            const note = document.createElement("div");
+            note.className = "note";
+            note.textContent = m.note;
+            li.append(note);
+          }
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          const at = new Date(m.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+          meta.textContent = m.mine ? at : `${m.alias} · ${at}`;
+          li.append(meta);
+          return li;
+        }),
+      );
+      $("messages").lastElementChild?.scrollIntoView({ block: "nearest" });
+    });
+
+    async function submit(appeal) {
+      const text = appeal ? lastText : $("text").value;
+      $("send").disabled = true;
+      $("appeal").hidden = true;
+      $("error").textContent = "";
+      const result = appeal ? await client.appeal(text) : await client.send(text);
+      $("send").disabled = false;
+      if (result.ok) {
+        $("text").value = "";
+        $("count").textContent = result.held ? "Waiting for a quick check before it's sent." : "";
+        return;
+      }
+      lastText = text;
+      $("error").textContent = result.error === "blocked" ? result.message : errorText(result.error);
+      $("appeal").hidden = !result.appealable;
+    }
+
+    $("composer").onsubmit = (e) => {
+      e.preventDefault();
+      void submit(false);
+    };
+    $("appeal").onclick = () => void submit(true);
+    $("text").onkeydown = (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        void submit(false);
+      }
+    };
+    $("text").oninput = () => {
+      const n = $("text").value.length;
+      const max = client.getState().maxChars ?? 0;
+      $("count").textContent = n > max * 0.8 ? `${n} / ${max}` : "";
+    };
+  }
+</script>
+</body>
+</html>

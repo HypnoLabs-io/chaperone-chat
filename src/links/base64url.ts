@@ -9,7 +9,7 @@ export function encodeBytes(bytes: Uint8Array): string {
 }
 
 /** The bytes, or null when `text` isn't base64url. */
-export function decodeBytes(text: string): Uint8Array | null {
+export function decodeBytes(text: string): Uint8Array<ArrayBuffer> | null {
   if (!ALPHABET.test(text) || text.length % 4 === 1) return null;
   const padded = text.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((text.length + 3) % 4);
   let binary: string;
